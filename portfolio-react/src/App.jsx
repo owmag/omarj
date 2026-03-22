@@ -21,7 +21,6 @@ import { useGridDimensions } from "./hooks/useGridDimensions";
 import { BackArrow } from "./components/BackArrow";
 import { LetterOverlay } from "./components/LetterOverlay";
 import { projects, projectVideos } from "./data/projects";
-import { preloadPortfolioVideos, revealVideoWhenReady } from "./utils/videoPreload";
 
 const AB_TEST_NO_LOAD_ANIMATIONS = false;
 
@@ -313,10 +312,110 @@ function syncPreviewVideoSize(video, cell, targetCellWidth, targetCellHeight) {
   video.style.minHeight = `${cellHeight}px`;
 }
 
-function prepareOpacityFadeOut(el) {
-  if (!el) return;
-  el.style.transition = "opacity 0.4s ease";
-  el.style.willChange = "opacity";
+/** Same box math as syncPreviewVideoSize — only for hover preview; expanded uses CSS with the video. */
+function syncPreviewPosterToVideo(poster, video, cell, targetCellWidth, targetCellHeight) {
+  if (!poster || !video || !cell) return;
+  const videoWidth = video.videoWidth;
+  const videoHeight = video.videoHeight;
+  if (!videoWidth || !videoHeight) return;
+  const cellWidth = targetCellWidth ?? cell.clientWidth;
+  const cellHeight = targetCellHeight ?? cell.clientHeight;
+  if (!cellWidth || !cellHeight) return;
+  const cellAspect = cellWidth / cellHeight;
+  const videoAspect = videoWidth / videoHeight;
+  const coverScale = Math.max(
+    cellAspect / videoAspect,
+    videoAspect / cellAspect,
+    1,
+  );
+  const scaledPercent = coverScale * 100;
+  poster.style.transition = "opacity 0.3s ease";
+  poster.style.width = `${scaledPercent}%`;
+  poster.style.height = `${scaledPercent}%`;
+  poster.style.minWidth = `${cellWidth}px`;
+  poster.style.minHeight = `${cellHeight}px`;
+}
+
+function bindPosterSizeToVideo(poster, video, cell, targetCellWidth, targetCellHeight) {
+  const sync = () => {
+    if (!poster.isConnected || !video.isConnected) return;
+    if (video.videoWidth && video.videoHeight) {
+      syncPreviewPosterToVideo(
+        poster,
+        video,
+        cell,
+        targetCellWidth,
+        targetCellHeight,
+      );
+    }
+  };
+  video.addEventListener("loadedmetadata", sync, { once: true });
+  poster.addEventListener("load", sync, { once: true });
+  sync();
+}
+
+function fadeOutRemovePoster(poster) {
+  if (!poster?.parentNode) return;
+  poster.classList.add("fade-out");
+  const end = () => poster.remove();
+  poster.addEventListener("transitionend", end, { once: true });
+  setTimeout(end, 400);
+}
+
+function bindPosterUntilVideoReady(video, poster) {
+  if (!poster || !video) return;
+  const done = () => fadeOutRemovePoster(poster);
+  if (video.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) {
+    done();
+    return;
+  }
+  video.addEventListener("canplay", done, { once: true });
+}
+
+function attachHoverPoster(cell, video, posterSrc, previewLayout) {
+  if (!posterSrc || window.matchMedia("(hover: none)").matches) return;
+  cell.querySelector("[data-hover-poster]")?.remove();
+  const poster = document.createElement("img");
+  poster.dataset.hoverPoster = "";
+  poster.className = "project-preview-poster show instant";
+  poster.src = posterSrc;
+  poster.alt = "";
+  poster.decoding = "async";
+  cell.appendChild(poster);
+  bindPosterSizeToVideo(
+    poster,
+    video,
+    cell,
+    previewLayout?.targetCellWidth,
+    previewLayout?.targetCellHeight,
+  );
+  bindPosterUntilVideoReady(video, poster);
+}
+
+function attachTouchExpandPoster(cell, video, posterSrc) {
+  if (!posterSrc || !window.matchMedia("(hover: none)").matches) return;
+  cell.querySelector("[data-hover-poster]")?.remove();
+  const poster = document.createElement("img");
+  poster.dataset.hoverPoster = "";
+  poster.className = "project-preview-poster fully-expanded";
+  poster.src = posterSrc;
+  poster.alt = "";
+  poster.decoding = "async";
+  cell.appendChild(poster);
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => poster.classList.add("show"));
+  });
+  bindPosterUntilVideoReady(video, poster);
+}
+
+function reparentPosterIntoVideoPanel(cell, video, videoPanel) {
+  const poster = cell.querySelector("[data-hover-poster]");
+  if (!poster) return;
+  poster.style.width = "";
+  poster.style.height = "";
+  poster.style.minWidth = "";
+  poster.style.minHeight = "";
+  videoPanel.insertBefore(poster, video);
 }
 
 export default function App() {
@@ -338,10 +437,6 @@ export default function App() {
 
   const reserved = useMemo(() => getReservedCells(cols, rows), [cols, rows]);
   const totalCells = cols * rows;
-
-  useEffect(() => {
-    preloadPortfolioVideos(projectVideos).catch(() => {});
-  }, []);
 
   useEffect(() => {
     const valid = getValidIndices(cols, rows, reserved);
@@ -422,11 +517,8 @@ export default function App() {
             clearTimeout(video._removeTimeout);
             video._removeTimeout = null;
           }
-          video.style.transition = "opacity 0.3s ease";
           video.classList.remove("fade-out");
-          if (!video.classList.contains("show")) {
-            revealVideoWhenReady(video);
-          }
+          video.classList.add("show");
           if (video.readyState >= 1) {
             syncPreviewVideoSize(
               video,
@@ -478,7 +570,9 @@ export default function App() {
           webm.type = "video/webm";
           video.appendChild(webm);
           cell.appendChild(video);
-          revealVideoWhenReady(video);
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => video.classList.add("show"));
+          });
           if (video.readyState >= 1) {
             syncPreviewVideoSize(
               video,
@@ -511,6 +605,10 @@ export default function App() {
             video.load();
           }
         }
+        const hoverVideo = cell.querySelector("[data-hover-video]");
+        if (hoverVideo && vidConfig.poster) {
+          attachHoverPoster(cell, hoverVideo, vidConfig.poster, previewLayout);
+        }
       }
       if (pos) {
         partialExpand(gridRef.current, cols, rows, pos.row, pos.col, previewLayout);
@@ -528,7 +626,6 @@ export default function App() {
       if (expandedCellRef.current) return;
       const hv = e.currentTarget.querySelector("[data-hover-video]");
       if (hv) {
-        prepareOpacityFadeOut(hv);
         hv.classList.add("fade-out");
         hv.pause();
         hv.currentTime = 0;
@@ -536,6 +633,11 @@ export default function App() {
           hv._removeTimeout = null;
           hv.remove();
         }, 400);
+      }
+      const hp = e.currentTarget.querySelector("[data-hover-poster]");
+      if (hp) {
+        hp.classList.add("fade-out");
+        setTimeout(() => hp.remove(), 400);
       }
     },
     [cols, rows, cellSize],
@@ -581,13 +683,14 @@ export default function App() {
           video.load();
           video.play().catch(() => {});
         }
-        video.classList.add("fully-expanded");
+        video.classList.add("show", "fully-expanded");
         video.style.width = "";
         video.style.height = "";
         video.style.minWidth = "";
         video.style.minHeight = "";
         video.style.transition = "";
-        revealVideoWhenReady(video);
+
+        attachTouchExpandPoster(cell, video, vidConfig.poster);
 
         projectDotsRef.current?.classList.add("show");
         setActivePanelIndex(0);
@@ -604,6 +707,7 @@ export default function App() {
           videoPanel.className = "project-panel";
           video.removeAttribute("data-hover-video");
           videoPanel.appendChild(video);
+          reparentPosterIntoVideoPanel(cell, video, videoPanel);
           galleryEl.appendChild(videoPanel);
 
           const textPanel = document.createElement("div");
@@ -667,13 +771,14 @@ export default function App() {
           video.load();
           video.play().catch(() => {});
         }
-        video.classList.add("fully-expanded");
+        video.classList.add("show", "fully-expanded");
         video.style.width = "";
         video.style.height = "";
         video.style.minWidth = "";
         video.style.minHeight = "";
         video.style.transition = "";
-        revealVideoWhenReady(video);
+
+        attachTouchExpandPoster(cell, video, vidConfig.poster);
 
         projectDotsRef.current?.classList.add("show");
         setActivePanelIndex(0);
@@ -690,6 +795,7 @@ export default function App() {
           videoPanel.className = "project-panel";
           video.removeAttribute("data-hover-video");
           videoPanel.appendChild(video);
+          reparentPosterIntoVideoPanel(cell, video, videoPanel);
           galleryEl.appendChild(videoPanel);
 
           const textPanel = document.createElement("div");
@@ -711,11 +817,11 @@ export default function App() {
 
           const addVideo = (src) => {
             const v = document.createElement("video");
-            v.className = "project-preview-video fully-expanded";
+            v.className = "project-preview-video show fully-expanded";
             v.muted = true;
             v.loop = true;
             v.playsInline = true;
-            v.preload = "auto";
+            v.preload = "metadata";
             v.controls = false;
             v.setAttribute("playsinline", "");
             v.setAttribute("webkit-playsinline", "");
@@ -741,14 +847,10 @@ export default function App() {
           };
 
           if (vidConfig.vid1) {
-            const v1 = addVideo(vidConfig.vid1);
-            dualVideoPanel.appendChild(v1);
-            revealVideoWhenReady(v1);
+            dualVideoPanel.appendChild(addVideo(vidConfig.vid1));
           }
           if (vidConfig.vid2) {
-            const v2 = addVideo(vidConfig.vid2);
-            dualVideoPanel.appendChild(v2);
-            revealVideoWhenReady(v2);
+            dualVideoPanel.appendChild(addVideo(vidConfig.vid2));
           }
           galleryEl.appendChild(dualVideoPanel);
 
@@ -770,7 +872,7 @@ export default function App() {
         if (!video) {
           video = document.createElement("video");
           video.setAttribute("data-hover-video", "");
-          video.className = "project-preview-video fully-expanded";
+          video.className = "project-preview-video show fully-expanded";
           video.muted = true;
           video.loop = true;
           video.playsInline = true;
@@ -797,7 +899,6 @@ export default function App() {
           cell.appendChild(video);
           video.load();
           video.play().catch(() => {});
-          revealVideoWhenReady(video);
         } else {
           video.style.width = "";
           video.style.height = "";
@@ -805,10 +906,8 @@ export default function App() {
           video.style.minHeight = "";
           video.style.transition = "";
           video.classList.add("fully-expanded");
-          if (!video.classList.contains("show")) {
-            revealVideoWhenReady(video);
-          }
         }
+        attachTouchExpandPoster(cell, video, vidConfig.poster);
       } else {
         const video = cell.querySelector("[data-hover-video]");
         if (video) video.remove();
@@ -845,6 +944,7 @@ export default function App() {
         }
         const videoOnly = cell.querySelector("[data-hover-video]");
         if (videoOnly) videoOnly.remove();
+        cell.querySelector("[data-hover-poster]")?.remove();
         cell.classList.remove("expanded");
         cell.style.zIndex = "";
       }
@@ -853,6 +953,9 @@ export default function App() {
     gridRef.current
       ?.querySelectorAll("[data-hover-video]")
       .forEach((v) => v.remove());
+    gridRef.current
+      ?.querySelectorAll("[data-hover-poster]")
+      .forEach((p) => p.remove());
     gridRef.current
       ?.querySelectorAll(".project-gallery-container")
       .forEach((g) => g.remove());
@@ -882,13 +985,16 @@ export default function App() {
       const gallery = cell.querySelector(".project-gallery-container");
       const videoOnly = cell.querySelector("[data-hover-video]");
       if (gallery) {
-        prepareOpacityFadeOut(gallery);
         gallery.classList.add("fade-out");
         setTimeout(() => gallery.remove(), 400);
       } else if (videoOnly) {
-        prepareOpacityFadeOut(videoOnly);
         videoOnly.classList.add("fade-out");
         setTimeout(() => videoOnly.remove(), 400);
+        const hp = cell.querySelector("[data-hover-poster]");
+        if (hp) {
+          hp.classList.add("fade-out");
+          setTimeout(() => hp.remove(), 400);
+        }
       }
       if (gallery) {
         const stored = galleryScrollListenerRef.current;

@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:expose": "concurrently -k -n vite,tunnel -c blue,magenta \"vite\" \"npx -y wait-on@7.2.0 http://127.0.0.1:5173 && npx -y cloudflared tunnel --url http://127.0.0.1:5173\"",
     "build": "vite build",
     "preview": "vite preview"
   },
@@ -14,6 +15,7 @@
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^9.2.1",
     "vite": "^5.0.0"
   }
 }
