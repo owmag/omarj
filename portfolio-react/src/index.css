@@ -73,6 +73,19 @@ main.collapsing .project-dots {
   opacity: 0 !important;
   pointer-events: none !important;
 }
+
+/* Freeze expanded content during collapse - prevent shifting/reflow */
+main.collapsing .project-gallery-container,
+main.collapsing .project-cell > .project-preview-video {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  z-index: 10;
+}
 main.collapsing .omar-clip-container .letter {
   transform: translate(-50%, -50%) translateY(0px) !important;
   transition: transform 0.5s steps(8, end) !important;
@@ -123,15 +136,16 @@ main.collapsing .developer-clip-container .letter.project-letter {
   margin: -1px;
 }
 
-/* Project gallery */
+/* Project gallery - vertical scroll for Pomodoro */
 .project-gallery-container {
   position: absolute;
   top: 0; left: 0;
   width: 100%; height: 100%;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scroll-snap-type: x mandatory;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
   display: flex;
+  flex-direction: column;
   scrollbar-width: none;
   -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
@@ -141,9 +155,16 @@ main.collapsing .developer-clip-container .letter.project-letter {
   display: none;
 }
 
+.project-gallery-container.fade-out {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
 .project-panel {
-  min-width: 100%; max-width: 100%; width: 100%; height: 100%;
+  min-width: 100%; min-height: 100%;
+  width: 100%; height: 100%;
   scroll-snap-align: start;
+  scroll-snap-stop: always;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -201,6 +222,22 @@ main.collapsing .developer-clip-container .letter.project-letter {
   object-fit: contain;
 }
 
+/* First panel video matches cell expand size (70%) to avoid snap when moving */
+.project-gallery-container .project-panel:first-child .project-preview-video.fully-expanded {
+  width: 70%;
+  height: 70%;
+  max-width: 900px;
+  max-height: 600px;
+}
+
+/* Dual video panel (e.g. welcome.audio panel 3) - two videos side by side */
+.project-panel[style*="display: flex"] .project-preview-video.fully-expanded {
+  width: 45%;
+  height: 90%;
+  max-width: 45%;
+  max-height: 90%;
+}
+
 .project-preview-video::-webkit-media-controls,
 .project-preview-video::-webkit-media-controls-enclosure,
 .project-preview-video::-webkit-media-controls-panel {
@@ -214,13 +251,18 @@ main.collapsing .developer-clip-container .letter.project-letter {
   flex-shrink: 1;
 }
 
+/* Symmetric inset so screenshots stay clear of fixed .project-dots (viewport right) */
+.project-panel:has(> .project-preview-image) {
+  padding-inline: clamp(48px, 6vw, 80px);
+}
+
 .project-description {
   font-family: 'Nanum Gothic', sans-serif;
-  font-size: 16px;
+  font-size: 14px;
   line-height: 1.6;
   color: white;
   padding: 40px;
-  max-width: 600px;
+  max-width: 460px;
   text-align: left;
   margin: 0;
 }
@@ -376,6 +418,7 @@ main.collapsing .developer-clip-container .letter.project-letter {
   font-size: 20px;
   color: #fff;
   line-height: 1;
+  transition: opacity 0.2s ease;
 }
 
 @media (hover: none) and (pointer: coarse) {

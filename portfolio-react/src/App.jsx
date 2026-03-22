@@ -113,51 +113,70 @@ function startShuffleAnimation(
   setTimeout(performShuffle, 100);
 }
 
-function partialExpand(gridEl, cols, rows, row, col) {
+function getPartialExpandLayout(gridEl, cols, rows, row, col, forcedTarget) {
   if (!gridEl) return;
+  const horizontalBoundary = 30;
   const headerEndRow = 1;
   const isSmallScreen = window.innerWidth < 660;
   const footerStartRow = isSmallScreen ? rows - 3 : rows - 1;
-  const centerCol = Math.floor(cols / 2) - 1;
+  const centerCol = Math.floor(cols / 2) - 2;
   const centerRow = Math.floor(rows / 2) - 2;
   const expandLeft = col > centerCol;
   const expandUp = row > centerRow;
   const expandedWidth = 210;
   const expandedHeight = 150;
   const normal = 30;
+  const minColWidth = 0;
   const minRowHeight = 5;
-  const minColWidth = 5;
   const widthDist = expandedWidth - normal;
   const heightDist = expandedHeight - normal;
 
-  let colSizes;
-  if (expandLeft) {
-    colSizes = Array.from({ length: cols }, (_, c) => {
-      if (c === col) return `${expandedWidth}px`;
-      let squeeze = normal;
-      if (c < col) squeeze = normal - widthDist / (col || 1);
-      return `${Math.max(squeeze, minColWidth)}px`;
-    });
-  } else {
-    const colsLeft = col;
-    const colsRight = cols - col - 1;
-    const leftColsTotal = colsLeft * normal;
-    const rightColsMinTotal = colsRight * minColWidth;
-    const availableForExpandedAndRight = window.innerWidth - leftColsTotal;
-    const maxExpandedWidth = Math.max(
-      normal + minColWidth,
-      availableForExpandedAndRight - rightColsMinTotal,
-    );
-    const actualExpandedWidth = Math.min(expandedWidth, maxExpandedWidth);
-    const rightColsTotal = availableForExpandedAndRight - actualExpandedWidth;
-    const rightColSize = colsRight > 0 ? rightColsTotal / colsRight : normal;
-
-    colSizes = Array.from({ length: cols }, (_, c) => {
-      if (c === col) return `${actualExpandedWidth}px`;
-      if (c > col) return `${Math.max(rightColSize, minColWidth)}px`;
-      return `${normal}px`;
+  const viewportWidth = gridEl.clientWidth;
+  const visibleWidthByCol = Array.from({ length: cols }, (_, c) => {
+    const start = c * normal;
+    const end = start + normal;
+    return Math.max(0, Math.min(end, viewportWidth) - Math.max(start, 0));
+  });
+  const preferredTargets = expandLeft
+    ? Array.from({ length: col }, (_, c) => c)
+    : Array.from({ length: cols - col - 1 }, (_, i) => col + 1 + i);
+  const fallbackTargets = expandLeft
+    ? Array.from({ length: cols - col - 1 }, (_, i) => col + 1 + i)
+    : Array.from({ length: col }, (_, c) => c);
+  const preferredRecoverable = preferredTargets.reduce(
+    (sum, c) => sum + Math.max(visibleWidthByCol[c] - minColWidth, 0),
+    0,
+  );
+  const squeezeTargets =
+    preferredRecoverable > 0 ? preferredTargets : fallbackTargets;
+  const recoverableByCol = Array(cols).fill(0);
+  squeezeTargets.forEach((c) => {
+    recoverableByCol[c] = Math.max(visibleWidthByCol[c] - minColWidth, 0);
+  });
+  const totalRecoverable = recoverableByCol.reduce((sum, v) => sum + v, 0);
+  const squeezingLeft = squeezeTargets.some((c) => c < col);
+  const cellLeftAtRest = col * normal;
+  const cellRightAtRest = (col + 1) * normal;
+  const maxByBoundary = squeezingLeft
+    ? Math.max(cellLeftAtRest - horizontalBoundary, 0)
+    : Math.max(viewportWidth - horizontalBoundary - cellRightAtRest, 0);
+  const maxWidthDist = Math.min(widthDist, totalRecoverable, maxByBoundary);
+  let actualWidthDist = maxWidthDist;
+  if (forcedTarget?.targetCellWidth != null) {
+    const forcedWidthDist = Math.max(forcedTarget.targetCellWidth - normal, 0);
+    actualWidthDist = Math.min(maxWidthDist, forcedWidthDist);
+  }
+  const colReduction = Array(cols).fill(0);
+  if (actualWidthDist > 0 && totalRecoverable > 0) {
+    squeezeTargets.forEach((c) => {
+      colReduction[c] = (actualWidthDist * recoverableByCol[c]) / totalRecoverable;
     });
   }
+
+  const colSizes = Array.from({ length: cols }, (_, c) => {
+    if (c === col) return `${normal + actualWidthDist}px`;
+    return `${Math.max(normal - colReduction[c], minColWidth)}px`;
+  });
 
   const rowsAbove = row - headerEndRow - 1;
   const rowsBelow = footerStartRow - row - 1;
@@ -172,10 +191,15 @@ function partialExpand(gridEl, cols, rows, row, col) {
   const maxRecoverableFromHeaderFooter = squeezeFromHeaderFooter
     ? headerFooterRows * (normal - minRowHeight)
     : 0;
-  const actualHeightDist = Math.min(
+  const maxHeightDist = Math.min(
     heightDist,
     maxRecoverableFromContent + maxRecoverableFromHeaderFooter,
   );
+  let actualHeightDist = maxHeightDist;
+  if (forcedTarget?.targetCellHeight != null) {
+    const forcedHeightDist = Math.max(forcedTarget.targetCellHeight - normal, 0);
+    actualHeightDist = Math.min(maxHeightDist, forcedHeightDist);
+  }
 
   const rowSizes = Array.from({ length: rows }, (_, r) => {
     if (r === row) return `${normal + actualHeightDist}px`;
@@ -199,10 +223,42 @@ function partialExpand(gridEl, cols, rows, row, col) {
     return `${Math.max(squeeze, minRowHeight)}px`;
   });
 
+  return {
+    colSizes,
+    rowSizes,
+    targetCellWidth: normal + actualWidthDist,
+    targetCellHeight: normal + actualHeightDist,
+  };
+}
+
+function getUniformPartialExpandTarget(gridEl, cols, rows, positions) {
+  if (!gridEl || !positions?.length) return null;
+  let minTargetWidth = Infinity;
+  let minTargetHeight = Infinity;
+  positions.forEach((pos) => {
+    const layout = getPartialExpandLayout(gridEl, cols, rows, pos.row, pos.col);
+    if (!layout) return;
+    minTargetWidth = Math.min(minTargetWidth, layout.targetCellWidth);
+    minTargetHeight = Math.min(minTargetHeight, layout.targetCellHeight);
+  });
+  if (!Number.isFinite(minTargetWidth) || !Number.isFinite(minTargetHeight)) {
+    return null;
+  }
+  return {
+    targetCellWidth: minTargetWidth,
+    targetCellHeight: minTargetHeight,
+  };
+}
+
+function partialExpand(gridEl, cols, rows, row, col, layout) {
+  if (!gridEl) return;
+  const finalLayout =
+    layout ?? getPartialExpandLayout(gridEl, cols, rows, row, col);
+  if (!finalLayout) return;
   gridEl.style.transition =
     "grid-template-columns 0.4s cubic-bezier(0.4, 0, 0.2, 1), grid-template-rows 0.4s cubic-bezier(0.4, 0, 0.2, 1)";
-  gridEl.style.gridTemplateColumns = colSizes.join(" ");
-  gridEl.style.gridTemplateRows = rowSizes.join(" ");
+  gridEl.style.gridTemplateColumns = finalLayout.colSizes.join(" ");
+  gridEl.style.gridTemplateRows = finalLayout.rowSizes.join(" ");
 }
 
 function collapsePartial(gridEl, cols, rows, cellSize) {
@@ -215,7 +271,7 @@ function collapsePartial(gridEl, cols, rows, cellSize) {
   gridEl.style.gridTemplateRows = Array(rows).fill(`${cellSize}px`).join(" ");
 }
 
-function expandGrid(gridEl, cols, rows, clickedCol, clickedRow, cellSize) {
+function expandGrid(gridEl, cols, rows, clickedCol, clickedRow) {
   if (!gridEl) return;
   gridEl.style.transition =
     "grid-template-columns 0.7s cubic-bezier(0.4, 0, 0.2, 1), grid-template-rows 0.7s cubic-bezier(0.4, 0, 0.2, 1)";
@@ -237,6 +293,25 @@ function collapseGrid(gridEl, cols, rows, cellSize) {
   gridEl.style.gridTemplateRows = Array(rows).fill(`${cellSize}px`).join(" ");
 }
 
+function syncPreviewVideoSize(video, cell, targetCellWidth, targetCellHeight) {
+  if (!video || !cell) return;
+  const cellWidth = targetCellWidth ?? cell.clientWidth;
+  const cellHeight = targetCellHeight ?? cell.clientHeight;
+  const videoWidth = video.videoWidth;
+  const videoHeight = video.videoHeight;
+  if (!cellWidth || !cellHeight || !videoWidth || !videoHeight) return;
+
+  const cellAspect = cellWidth / cellHeight;
+  const videoAspect = videoWidth / videoHeight;
+  const coverScale = Math.max(cellAspect / videoAspect, videoAspect / cellAspect, 1);
+  const scaledPercent = coverScale * 100;
+  video.style.transition = "opacity 0.3s ease";
+  video.style.width = `${scaledPercent}%`;
+  video.style.height = `${scaledPercent}%`;
+  video.style.minWidth = `${cellWidth}px`;
+  video.style.minHeight = `${cellHeight}px`;
+}
+
 export default function App() {
   const { cols, rows, cellSize } = useGridDimensions();
   const gridRef = useRef(null);
@@ -248,9 +323,11 @@ export default function App() {
 
   const [projectPositions, setProjectPositions] = useState([]);
   const [isInitialAnimating, setIsInitialAnimating] = useState(false);
+  const [activePanelIndex, setActivePanelIndex] = useState(0);
   const backArrowRef = useRef(null);
   const projectDotsRef = useRef(null);
   const letterOverlayRef = useRef(null);
+  const galleryScrollListenerRef = useRef(null);
 
   const reserved = useMemo(() => getReservedCells(cols, rows), [cols, rows]);
   const totalCells = cols * rows;
@@ -305,8 +382,23 @@ export default function App() {
         window.matchMedia("(hover: none)").matches
       )
         return;
+      const uniformTarget = getUniformPartialExpandTarget(
+        gridRef.current,
+        cols,
+        rows,
+        projectPositions,
+      );
+      const previewLayout = pos
+        ? getPartialExpandLayout(
+            gridRef.current,
+            cols,
+            rows,
+            pos.row,
+            pos.col,
+            uniformTarget,
+          )
+        : null;
       if (pos) {
-        partialExpand(gridRef.current, cols, rows, pos.row, pos.col);
         e.currentTarget.style.zIndex = "10";
       }
 
@@ -321,56 +413,102 @@ export default function App() {
           }
           video.classList.remove("fade-out");
           video.classList.add("show");
+          if (video.readyState >= 1) {
+            syncPreviewVideoSize(
+              video,
+              cell,
+              previewLayout?.targetCellWidth,
+              previewLayout?.targetCellHeight,
+            );
+          } else {
+            video.addEventListener(
+              "loadedmetadata",
+              () => {
+                syncPreviewVideoSize(
+                  video,
+                  cell,
+                  previewLayout?.targetCellWidth,
+                  previewLayout?.targetCellHeight,
+                );
+              },
+              { once: true },
+            );
+          }
           video.play().catch(() => {});
-          return;
         }
-        video = document.createElement("video");
-        video.setAttribute("data-hover-video", "");
-        video.className = "project-preview-video";
-        video.muted = true;
-        video.loop = true;
-        video.playsInline = true;
-        video.preload = "auto";
-        video.controls = false;
-        video.setAttribute("playsinline", "");
-        video.setAttribute("webkit-playsinline", "");
-        video.addEventListener("webkitbeginfullscreen", (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-        });
-        video.addEventListener("webkitendfullscreen", (ev) => {
-          ev.preventDefault();
-          ev.stopPropagation();
-        });
-        const mp4 = document.createElement("source");
-        mp4.src = vidConfig.mp4;
-        mp4.type = "video/mp4";
-        video.appendChild(mp4);
-        const webm = document.createElement("source");
-        webm.src = vidConfig.webm;
-        webm.type = "video/webm";
-        video.appendChild(webm);
-        cell.appendChild(video);
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => video.classList.add("show"));
-        });
-        if (video.readyState >= 2) {
-          video.play().catch(() => {});
-        } else {
-          video.addEventListener(
-            "loadeddata",
-            () => video.play().catch(() => {}),
-            { once: true },
-          );
-          video.load();
+        if (!video) {
+          video = document.createElement("video");
+          video.setAttribute("data-hover-video", "");
+          video.className = "project-preview-video";
+          video.muted = true;
+          video.loop = true;
+          video.playsInline = true;
+          video.preload = "auto";
+          video.controls = false;
+          video.setAttribute("playsinline", "");
+          video.setAttribute("webkit-playsinline", "");
+          video.addEventListener("webkitbeginfullscreen", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+          });
+          video.addEventListener("webkitendfullscreen", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+          });
+          const mp4 = document.createElement("source");
+          mp4.src = vidConfig.mp4;
+          mp4.type = "video/mp4";
+          video.appendChild(mp4);
+          const webm = document.createElement("source");
+          webm.src = vidConfig.webm;
+          webm.type = "video/webm";
+          video.appendChild(webm);
+          cell.appendChild(video);
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => video.classList.add("show"));
+          });
+          if (video.readyState >= 1) {
+            syncPreviewVideoSize(
+              video,
+              cell,
+              previewLayout?.targetCellWidth,
+              previewLayout?.targetCellHeight,
+            );
+          } else {
+            video.addEventListener(
+              "loadedmetadata",
+              () => {
+                syncPreviewVideoSize(
+                  video,
+                  cell,
+                  previewLayout?.targetCellWidth,
+                  previewLayout?.targetCellHeight,
+                );
+              },
+              { once: true },
+            );
+          }
+          if (video.readyState >= 2) {
+            video.play().catch(() => {});
+          } else {
+            video.addEventListener(
+              "loadeddata",
+              () => video.play().catch(() => {}),
+              { once: true },
+            );
+            video.load();
+          }
         }
       }
+      if (pos) {
+        partialExpand(gridRef.current, cols, rows, pos.row, pos.col, previewLayout);
+      }
     },
-    [cols, rows],
+    [cols, rows, projectPositions],
   );
 
   const handleMouseLeave = useCallback(
-    (e, pos) => {
+    (e) => {
       if (!expandedCellRef.current) {
         collapsePartial(gridRef.current, cols, rows, cellSize);
         e.currentTarget.style.zIndex = "";
@@ -394,9 +532,222 @@ export default function App() {
     (e, pos) => {
       if (!pos || expandedCellRef.current) return;
       const cell = e.currentTarget;
-      let video = cell.querySelector("[data-hover-video]");
-      const vidConfig = pos.project?.name && projectVideos[pos.project.name];
-      if (vidConfig) {
+      const projectName = pos.project?.name;
+      const vidConfig = projectName && projectVideos[projectName];
+
+      if (projectName === "Pomodoro Timer" && vidConfig) {
+        let video = cell.querySelector("[data-hover-video]");
+        if (!video) {
+          video = document.createElement("video");
+          video.setAttribute("data-hover-video", "");
+          video.className = "project-preview-video";
+          video.muted = true;
+          video.loop = true;
+          video.playsInline = true;
+          video.preload = "auto";
+          video.controls = false;
+          video.setAttribute("playsinline", "");
+          video.setAttribute("webkit-playsinline", "");
+          video.addEventListener("webkitbeginfullscreen", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+          });
+          video.addEventListener("webkitendfullscreen", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+          });
+          const mp4 = document.createElement("source");
+          mp4.src = vidConfig.mp4;
+          mp4.type = "video/mp4";
+          video.appendChild(mp4);
+          const webm = document.createElement("source");
+          webm.src = vidConfig.webm;
+          webm.type = "video/webm";
+          video.appendChild(webm);
+          cell.appendChild(video);
+          video.load();
+          video.play().catch(() => {});
+        }
+        video.classList.add("show", "fully-expanded");
+        video.style.width = "";
+        video.style.height = "";
+        video.style.minWidth = "";
+        video.style.minHeight = "";
+        video.style.transition = "";
+
+        projectDotsRef.current?.classList.add("show");
+        setActivePanelIndex(0);
+
+        setTimeout(() => {
+          if (!expandedCellRef.current) return;
+          const gallery = cell.querySelector(".project-gallery-container");
+          if (gallery) return;
+
+          const galleryEl = document.createElement("div");
+          galleryEl.className = "project-gallery-container";
+
+          const videoPanel = document.createElement("div");
+          videoPanel.className = "project-panel";
+          video.removeAttribute("data-hover-video");
+          videoPanel.appendChild(video);
+          galleryEl.appendChild(videoPanel);
+
+          const textPanel = document.createElement("div");
+          textPanel.className = "project-panel";
+          const description = document.createElement("p");
+          description.className = "project-description";
+          description.textContent =
+            "Stay focused and productive with this lightweight, easy-to-use Pomodoro timer — built right into your Chrome tab. Based on the proven Pomodoro Technique, this extension helps you manage work and break sessions without being distracting or complicated.";
+          textPanel.appendChild(description);
+          galleryEl.appendChild(textPanel);
+
+          const imagePanel = document.createElement("div");
+          imagePanel.className = "project-panel";
+          const img = document.createElement("img");
+          img.className = "project-preview-image";
+          img.src = "/images/pomodoroimg1.png";
+          img.alt = projectName;
+          imagePanel.appendChild(img);
+          galleryEl.appendChild(imagePanel);
+
+          cell.appendChild(galleryEl);
+
+          const onGalleryScroll = () => {
+            const vh = window.innerHeight;
+            const index = Math.round(galleryEl.scrollTop / vh);
+            setActivePanelIndex(Math.min(index, 2));
+          };
+          galleryEl.addEventListener("scroll", onGalleryScroll);
+          galleryScrollListenerRef.current = { gallery: galleryEl, onGalleryScroll };
+        }, 400);
+      } else if (projectName === "welcome.audio" && vidConfig) {
+        let video = cell.querySelector("[data-hover-video]");
+        if (!video) {
+          video = document.createElement("video");
+          video.setAttribute("data-hover-video", "");
+          video.className = "project-preview-video";
+          video.muted = true;
+          video.loop = true;
+          video.playsInline = true;
+          video.preload = "auto";
+          video.controls = false;
+          video.setAttribute("playsinline", "");
+          video.setAttribute("webkit-playsinline", "");
+          video.addEventListener("webkitbeginfullscreen", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+          });
+          video.addEventListener("webkitendfullscreen", (ev) => {
+            ev.preventDefault();
+            ev.stopPropagation();
+          });
+          const mp4 = document.createElement("source");
+          mp4.src = vidConfig.mp4;
+          mp4.type = "video/mp4";
+          video.appendChild(mp4);
+          const webm = document.createElement("source");
+          webm.src = vidConfig.webm;
+          webm.type = "video/webm";
+          video.appendChild(webm);
+          cell.appendChild(video);
+          video.load();
+          video.play().catch(() => {});
+        }
+        video.classList.add("show", "fully-expanded");
+        video.style.width = "";
+        video.style.height = "";
+        video.style.minWidth = "";
+        video.style.minHeight = "";
+        video.style.transition = "";
+
+        projectDotsRef.current?.classList.add("show");
+        setActivePanelIndex(0);
+
+        setTimeout(() => {
+          if (!expandedCellRef.current) return;
+          const gallery = cell.querySelector(".project-gallery-container");
+          if (gallery) return;
+
+          const galleryEl = document.createElement("div");
+          galleryEl.className = "project-gallery-container";
+
+          const videoPanel = document.createElement("div");
+          videoPanel.className = "project-panel";
+          video.removeAttribute("data-hover-video");
+          videoPanel.appendChild(video);
+          galleryEl.appendChild(videoPanel);
+
+          const textPanel = document.createElement("div");
+          textPanel.className = "project-panel";
+          const description = document.createElement("p");
+          description.className = "project-description";
+          description.textContent =
+            "A 24/7 live radio stream featuring curated music and ambient soundscapes. Built with Liquidsoap, Icecast, and custom infrastructure for reliable streaming and listener management.";
+          textPanel.appendChild(description);
+          galleryEl.appendChild(textPanel);
+
+          const dualVideoPanel = document.createElement("div");
+          dualVideoPanel.className = "project-panel";
+          dualVideoPanel.style.display = "flex";
+          dualVideoPanel.style.flexDirection = "row";
+          dualVideoPanel.style.gap = "10px";
+          dualVideoPanel.style.justifyContent = "center";
+          dualVideoPanel.style.alignItems = "center";
+
+          const addVideo = (src) => {
+            const v = document.createElement("video");
+            v.className = "project-preview-video show fully-expanded";
+            v.muted = true;
+            v.loop = true;
+            v.playsInline = true;
+            v.preload = "metadata";
+            v.controls = false;
+            v.setAttribute("playsinline", "");
+            v.setAttribute("webkit-playsinline", "");
+            v.addEventListener("webkitbeginfullscreen", (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+            });
+            v.addEventListener("webkitendfullscreen", (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+            });
+            const mp4El = document.createElement("source");
+            mp4El.src = src.mp4;
+            mp4El.type = "video/mp4";
+            v.appendChild(mp4El);
+            const webmEl = document.createElement("source");
+            webmEl.src = src.webm;
+            webmEl.type = "video/webm";
+            v.appendChild(webmEl);
+            v.load();
+            v.play().catch(() => {});
+            return v;
+          };
+
+          if (vidConfig.vid1) {
+            dualVideoPanel.appendChild(addVideo(vidConfig.vid1));
+          }
+          if (vidConfig.vid2) {
+            dualVideoPanel.appendChild(addVideo(vidConfig.vid2));
+          }
+          galleryEl.appendChild(dualVideoPanel);
+
+          cell.appendChild(galleryEl);
+
+          const onGalleryScroll = () => {
+            const vh = window.innerHeight;
+            const index = Math.round(galleryEl.scrollTop / vh);
+            setActivePanelIndex(Math.min(index, 2));
+          };
+          galleryEl.addEventListener("scroll", onGalleryScroll);
+          galleryScrollListenerRef.current = {
+            gallery: galleryEl,
+            onGalleryScroll,
+          };
+        }, 400);
+      } else if (vidConfig) {
+        let video = cell.querySelector("[data-hover-video]");
         if (!video) {
           video = document.createElement("video");
           video.setAttribute("data-hover-video", "");
@@ -428,27 +779,76 @@ export default function App() {
           video.load();
           video.play().catch(() => {});
         } else {
+          video.style.width = "";
+          video.style.height = "";
+          video.style.minWidth = "";
+          video.style.minHeight = "";
+          video.style.transition = "";
           video.classList.add("fully-expanded");
         }
-      } else if (video) {
-        video.remove();
+      } else {
+        const video = cell.querySelector("[data-hover-video]");
+        if (video) video.remove();
       }
+
       if (letterGridRef.current) letterGridRef.current.style.opacity = "0";
-      expandGrid(gridRef.current, cols, rows, pos.col, pos.row, cellSize);
+      expandGrid(gridRef.current, cols, rows, pos.col, pos.row);
       cell.classList.add("expanded");
       cell.style.gridColumn = `${pos.col + 1} / span 1`;
       cell.style.gridRow = `${pos.row + 1} / span 1`;
       cell.style.zIndex = "1000";
       backArrowRef.current?.classList.add("show");
       mainRef.current?.setAttribute("data-expanded", "");
-      if (pos.project?.name === "Pomodoro Timer") {
-        projectDotsRef.current?.classList.add("show");
-      }
-      letterOverlayRef.current?.updateProject?.(pos.project?.name);
+      letterOverlayRef.current?.updateProject?.(projectName);
       expandedCellRef.current = { cell, pos };
     },
     [cols, rows, cellSize],
   );
+
+  const hardReset = useCallback(() => {
+    const expanded = expandedCellRef.current;
+    if (expanded) {
+      const { cell } = expanded;
+      expandedCellRef.current = null;
+      if (cell) {
+        const gallery = cell.querySelector(".project-gallery-container");
+        if (gallery) {
+          const stored = galleryScrollListenerRef.current;
+          if (stored?.gallery === gallery && stored?.onGalleryScroll) {
+            gallery.removeEventListener("scroll", stored.onGalleryScroll);
+          }
+          galleryScrollListenerRef.current = null;
+          gallery.remove();
+        }
+        const videoOnly = cell.querySelector("[data-hover-video]");
+        if (videoOnly) videoOnly.remove();
+        cell.classList.remove("expanded");
+        cell.style.zIndex = "";
+      }
+    }
+
+    gridRef.current
+      ?.querySelectorAll("[data-hover-video]")
+      .forEach((v) => v.remove());
+    gridRef.current
+      ?.querySelectorAll(".project-gallery-container")
+      .forEach((g) => g.remove());
+
+    const currentCols = Math.ceil(window.innerWidth / cellSize);
+    const currentRows = Math.ceil(window.innerHeight / cellSize);
+    collapseGrid(gridRef.current, currentCols, currentRows, cellSize);
+
+    mainRef.current?.classList.remove("collapsing");
+    mainRef.current?.removeAttribute("data-expanded");
+    if (letterGridRef.current) letterGridRef.current.style.opacity = "1";
+    backArrowRef.current?.classList.remove("show");
+    projectDotsRef.current?.classList.remove("show");
+    letterOverlayRef.current?.updateProject?.(null);
+    setActivePanelIndex(0);
+
+    justCollapsedRef.current = true;
+    setTimeout(() => (justCollapsedRef.current = false), 50);
+  }, [cellSize]);
 
   const handleCollapse = useCallback(() => {
     const expanded = expandedCellRef.current;
@@ -456,12 +856,24 @@ export default function App() {
     const { cell, pos } = expanded;
     if (cell) {
       expandedCellRef.current = null;
-      const video = cell.querySelector("[data-hover-video]");
-      if (video) {
-        video.classList.add("fade-out");
-        setTimeout(() => video.remove(), 400);
+      const gallery = cell.querySelector(".project-gallery-container");
+      const videoOnly = cell.querySelector("[data-hover-video]");
+      if (gallery) {
+        gallery.classList.add("fade-out");
+        setTimeout(() => gallery.remove(), 400);
+      } else if (videoOnly) {
+        videoOnly.classList.add("fade-out");
+        setTimeout(() => videoOnly.remove(), 400);
+      }
+      if (gallery) {
+        const stored = galleryScrollListenerRef.current;
+        if (stored?.gallery === gallery && stored?.onGalleryScroll) {
+          gallery.removeEventListener("scroll", stored.onGalleryScroll);
+        }
+        galleryScrollListenerRef.current = null;
       }
     }
+    setActivePanelIndex(0);
     mainRef.current?.classList.add("collapsing");
     collapseGrid(gridRef.current, cols, rows, cellSize);
     justCollapsedRef.current = true;
@@ -482,17 +894,23 @@ export default function App() {
   }, [cols, rows, cellSize]);
 
   useEffect(() => {
+    hardReset();
+  }, [hardReset]);
+
+  useEffect(() => {
     const handleResize = () => {
-      if (expandedCellRef.current) {
-        gridRef.current
-          ?.querySelectorAll("[data-hover-video]")
-          .forEach((v) => v.remove());
-        handleCollapse();
-      }
+      if (expandedCellRef.current) hardReset();
+    };
+    const handlePageShow = (e) => {
+      if (e.persisted) hardReset();
     };
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [handleCollapse]);
+    window.addEventListener("pageshow", handlePageShow);
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("pageshow", handlePageShow);
+    };
+  }, [hardReset]);
 
   return (
     <main
@@ -523,7 +941,7 @@ export default function App() {
               data-col={cellCol}
               data-project={pos?.project?.name}
               onMouseEnter={(e) => handleMouseEnter(e, pos)}
-              onMouseLeave={(e) => handleMouseLeave(e, pos)}
+              onMouseLeave={(e) => handleMouseLeave(e)}
               onClick={(e) => handleClick(e, pos)}
             ></div>
           );
@@ -539,9 +957,24 @@ export default function App() {
 
       <BackArrow ref={backArrowRef} onClick={handleCollapse} />
       <div ref={projectDotsRef} className="project-dots" aria-hidden="true">
-        <span className="project-dot">•</span>
-        <span className="project-dot">•</span>
-        <span className="project-dot">•</span>
+        <span
+          className="project-dot"
+          style={{ opacity: activePanelIndex === 0 ? 1 : 0.5 }}
+        >
+          •
+        </span>
+        <span
+          className="project-dot"
+          style={{ opacity: activePanelIndex === 1 ? 1 : 0.5 }}
+        >
+          •
+        </span>
+        <span
+          className="project-dot"
+          style={{ opacity: activePanelIndex === 2 ? 1 : 0.5 }}
+        >
+          •
+        </span>
       </div>
     </main>
   );

@@ -15,5 +15,13 @@ export const projectVideos = {
   "welcome.audio": {
     webm: "/videos/welcomeaudio-preview.webm",
     mp4: "/videos/welcomeaudio-preview.mp4",
+    vid1: {
+      mp4: "/videos/welcomeaudio-vid1.mp4",
+      webm: "/videos/welcomeaudio-vid1.webm",
+    },
+    vid2: {
+      mp4: "/videos/welcomeaudio-vid2.mp4",
+      webm: "/videos/welcomeaudio-vid2.webm",
+    },
   },
 };
