@@ -1,13 +1,21 @@
-# Portfolio Grid
+# Omar J — Full-Stack Developer
 
-Grid-based portfolio with hover expansion and project previews.
+Portfolio with interactive grid layout, hover expansion, and project previews.
 
-## Setup
+## React (Vite)
+
+```bash
+cd portfolio-react
+npm install
+npm run dev
+```
+
+## Vanilla
 
 Open `index2.html` in a browser. No build step required.
 
 ## Structure
 
-- `index2.html` — Main page
+- `portfolio-react/` — React + Vite app
+- `index2.html` — Vanilla version
 - `videos/` — Project preview videos
-- `images/` — Project thumbnails

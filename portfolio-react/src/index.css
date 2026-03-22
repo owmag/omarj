@@ -1,0 +1,361 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  cursor: crosshair;
+  overflow: hidden;
+}
+
+body {
+  height: 100vh;
+  background: #ffffff;
+  color: #222;
+  font-family: "Nanum Gothic", sans-serif;
+}
+
+#root {
+  height: 100%;
+}
+
+/* Slide animations */
+.text-slide-up {
+  transform: translate(-50%, -50%) translateY(-30px) !important;
+  transition: transform 0.5s steps(8, end) !important;
+}
+
+.text-slide-down {
+  transform: translate(-50%, -50%) translateY(30px) !important;
+  transition: transform 0.5s steps(8, end) !important;
+}
+
+.omar-slide-down, .fullstack-slide-up, .developer-slide-up {
+  transform: translate(-50%, -50%) translateY(0px) !important;
+  transition: transform 0.5s steps(8, end) !important;
+}
+
+.project-slide-down {
+  transform: translate(-50%, -50%) translateY(-30px) !important;
+  transition: transform 0.5s steps(8, end) !important;
+}
+
+/* Vanilla expand: letter positions via data attribute (no React) */
+main[data-expanded] .omar-clip-container .letter {
+  transform: translate(-50%, -50%) translateY(-30px) !important;
+  transition: transform 0.5s steps(8, end) !important;
+}
+main[data-expanded] .fullstack-clip-container .letter,
+main[data-expanded] .developer-clip-container .letter.developer {
+  transform: translate(-50%, -50%) translateY(30px) !important;
+  transition: transform 0.5s steps(8, end) !important;
+}
+main[data-expanded] .developer-clip-container .letter.project-letter {
+  transform: translate(-50%, -50%) translateY(30px) !important;
+  transition: transform 0.5s steps(8, end) !important;
+}
+
+/* Disable all mouse interactions during collapse and initial load animation */
+main.collapsing,
+main[data-initial-animating] {
+  pointer-events: none !important;
+}
+main.collapsing .highlight-grid,
+main[data-initial-animating] .highlight-grid {
+  pointer-events: none !important;
+}
+
+/* Vanilla collapse: no React re-renders during animation */
+main.collapsing .back-arrow {
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+main.collapsing .omar-clip-container .letter {
+  transform: translate(-50%, -50%) translateY(0px) !important;
+  transition: transform 0.5s steps(8, end) !important;
+}
+main.collapsing .fullstack-clip-container .letter {
+  transform: translate(-50%, -50%) translateY(0px) !important;
+  transition: transform 0.5s steps(8, end) !important;
+}
+main.collapsing .developer-clip-container .letter.developer {
+  transform: translate(-50%, -50%) translateY(0px) !important;
+  transition: transform 0.5s steps(8, end) !important;
+}
+main.collapsing .developer-clip-container .letter.project-letter {
+  transform: translate(-50%, -50%) translateY(-30px) !important;
+  transition: transform 0.5s steps(8, end) !important;
+}
+
+@keyframes move-left {
+  0% { left: var(--start-position); }
+  100% { left: calc(var(--start-position) - var(--total-width) - 40px); }
+}
+
+.ticker-crawl {
+  animation: move-left var(--duration) steps(var(--steps), end) infinite;
+}
+
+/* Highlight grid - uses --grid-cols/--grid-rows from inline script for first paint (CLS) */
+.highlight-grid {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--grid-cols, 40), 30px);
+  grid-template-rows: repeat(var(--grid-rows, 25), 30px);
+  pointer-events: auto;
+  user-select: none;
+  transition: grid-template-columns 0.3s ease, grid-template-rows 0.3s ease;
+}
+
+.highlight-cell {
+  box-sizing: border-box;
+  border: 0.5px solid #d7d7d7;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Project gallery */
+.project-gallery-container {
+  position: absolute;
+  top: 0; left: 0;
+  width: 100%; height: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  display: flex;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.project-gallery-container::-webkit-scrollbar {
+  display: none;
+}
+
+.project-panel {
+  min-width: 100%; max-width: 100%; width: 100%; height: 100%;
+  scroll-snap-align: start;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.project-preview-video {
+  position: relative;
+  object-fit: contain;
+  pointer-events: none;
+}
+
+.project-cell .project-preview-video {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 120%;
+  height: 120%;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity 0.3s ease, width 0.5s cubic-bezier(0.4, 0, 0.2, 1), height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.project-cell .project-preview-video.show {
+  opacity: 1;
+}
+
+.project-cell .project-preview-video.fade-out {
+  opacity: 0;
+  transition: opacity 0.4s ease;
+}
+
+.project-cell .project-preview-video.fully-expanded {
+  width: 70%;
+  height: 70%;
+  max-width: 900px;
+  max-height: 600px;
+  transition: opacity 0.3s ease, width 0.5s cubic-bezier(0.4, 0, 0.2, 1), height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.project-panel .project-preview-video {
+  width: 100%; height: 100%;
+  max-width: 100%; max-height: 100%;
+  object-fit: cover;
+  opacity: 1;
+  flex-shrink: 1;
+}
+
+.project-panel .project-preview-video.fully-expanded {
+  width: 50%; height: 50%;
+  max-width: 50%; max-height: 50%;
+  object-fit: contain;
+}
+
+.project-preview-video::-webkit-media-controls,
+.project-preview-video::-webkit-media-controls-enclosure,
+.project-preview-video::-webkit-media-controls-panel {
+  display: none !important;
+}
+
+.project-preview-image {
+  max-width: 100%; max-height: 100%;
+  width: auto; height: auto;
+  object-fit: contain;
+  flex-shrink: 1;
+}
+
+.project-description {
+  font-family: 'Nanum Gothic', sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  color: white;
+  padding: 40px;
+  max-width: 600px;
+  text-align: left;
+  margin: 0;
+}
+
+@media (max-width: 1024px) {
+  .project-panel .project-preview-video.fully-expanded {
+    width: 60%; height: 60%;
+    max-width: 60%; max-height: 60%;
+  }
+}
+
+@media (max-width: 768px) {
+  .project-panel .project-preview-video.fully-expanded {
+    width: 75%; height: 75%;
+    max-width: 75%; max-height: 75%;
+  }
+}
+
+@media (max-width: 480px) {
+  .project-panel .project-preview-video.fully-expanded {
+    width: 85%; height: 85%;
+    max-width: 85%; max-height: 85%;
+  }
+}
+
+/* Letter grid - uses same vars as highlight-grid for consistent first paint */
+.letter-grid {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--grid-cols, 40), 30px);
+  grid-template-rows: repeat(var(--grid-rows, 25), 30px);
+  pointer-events: none;
+  user-select: none;
+  z-index: 2;
+  transition: opacity 0.15s ease;
+}
+
+.letter-grid-cell {
+  box-sizing: border-box;
+  border: 0.5px solid transparent;
+}
+
+.letter-grid-cell.letter-row-cell {
+  border: 0.5px solid #d7d7d7;
+  background-color: white;
+}
+
+/* Mask / clip containers */
+.letter-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.omar-clip-container,
+.fullstack-clip-container {
+  position: absolute;
+  overflow: hidden;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.developer-clip-container {
+  position: absolute;
+  overflow: hidden;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* Letter typography */
+.letter {
+  position: absolute;
+  font-family: "Doto", "Arial Narrow", sans-serif;
+  font-weight: 500;
+  font-size: 40px;
+  color: #0727d8;
+  z-index: 5;
+  pointer-events: auto;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.letter.fullstack,
+.letter.developer {
+  mix-blend-mode: difference;
+}
+
+.letter.project-letter {
+  color: white;
+  width: 60px;
+  height: 60px;
+  top: -15px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.letter.project-letter.text-slide-up {
+  transform: translate(-50%, -50%) translateY(30px) !important;
+  transition: transform 0.6s steps(8, end) !important;
+}
+
+/* Back arrow */
+.back-arrow {
+  display: none;
+  position: fixed;
+  font-size: 4rem;
+  color: #fff;
+  z-index: 11;
+  padding: 12px 15px;
+  border-radius: 8px;
+  opacity: 0;
+  pointer-events: none;
+  font-family: "Nanum Gothic", sans-serif;
+  font-weight: 500;
+}
+
+.back-arrow.show {
+  opacity: 1;
+  pointer-events: auto;
+  display: block;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .highlight-cell:hover:not(.expanded) {
+    background-color: transparent !important;
+    transform: none !important;
+  }
+  .back-arrow:hover {
+    background-color: transparent !important;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .project-cell {
+    pointer-events: auto !important;
+  }
+}

@@ -499,9 +499,21 @@
         pointer-events: auto;
         display: block;
       }
+
+      /* Mouse block overlay - disables all pointer interaction during back collapse */
+      #mouse-block-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        pointer-events: none;
+      }
+      #mouse-block-overlay.active {
+        pointer-events: auto;
+      }
     </style>
   </head>
   <body>
+    <div id="mouse-block-overlay" aria-hidden="true"></div>
     <main id="app" aria-label="Mouse tracking page" role="main">
       <div id="highlight-grid"></div>
       <div id="letter-grid"></div>
@@ -1781,6 +1793,10 @@
       }
 
       function collapseCell(cell) {
+        // Disable mouse interaction during back collapse animations
+        const mouseOverlay = document.getElementById('mouse-block-overlay');
+        if (mouseOverlay) mouseOverlay.classList.add('active');
+
         cell.classList.remove('expanded');
         backArrow.classList.remove('show');
         expandedCell = null;
@@ -1906,6 +1922,11 @@
         setTimeout(() => {
           letterGrid.style.opacity = '1';
         }, 400); // Match the grid transition duration (0.4s)
+
+        // Re-enable mouse after all back animations complete (letters: 0.5s, grid: 0.4s)
+        setTimeout(() => {
+          if (mouseOverlay) mouseOverlay.classList.remove('active');
+        }, 500);
       }
 
       // Back arrow event handlers
