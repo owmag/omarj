@@ -8,6 +8,8 @@ html, body {
   padding: 0;
   cursor: crosshair;
   overflow: hidden;
+  /* Remove default grey tap flash on mobile WebKit */
+  -webkit-tap-highlight-color: transparent;
 }
 
 body {
@@ -74,18 +76,11 @@ main.collapsing .project-dots {
   pointer-events: none !important;
 }
 
-/* Freeze expanded content during collapse - prevent shifting/reflow */
-main.collapsing .project-gallery-container,
-main.collapsing .project-cell > .project-preview-video {
-  position: fixed !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  bottom: 0 !important;
-  width: 100vw !important;
-  height: 100vh !important;
-  z-index: 10;
-}
+/*
+ * Leave project gallery / video positioned inside .highlight-cell (absolute, 100%)
+ * during collapse so they scale with the grid cell—same containment as expand.
+ * Avoid position:fixed + 100vw here; that detaches content from the shrinking cell.
+ */
 main.collapsing .omar-clip-container .letter {
   transform: translate(-50%, -50%) translateY(0px) !important;
   transition: transform 0.5s steps(8, end) !important;
