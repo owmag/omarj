@@ -312,6 +312,22 @@ function syncPreviewVideoSize(video, cell, targetCellWidth, targetCellHeight) {
   video.style.minHeight = `${cellHeight}px`;
 }
 
+/** Ensures opacity:0 paints before .show so CSS transitions run (fixes iOS/WebKit skips). */
+function scheduleOpacityShow(el) {
+  if (!el || el.classList.contains("show")) return;
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      el.classList.add("show");
+    });
+  });
+}
+
+function prepareOpacityFadeOut(el) {
+  if (!el) return;
+  el.style.transition = "opacity 0.4s ease";
+  el.style.willChange = "opacity";
+}
+
 export default function App() {
   const { cols, rows, cellSize } = useGridDimensions();
   const gridRef = useRef(null);
@@ -411,8 +427,11 @@ export default function App() {
             clearTimeout(video._removeTimeout);
             video._removeTimeout = null;
           }
+          video.style.transition = "opacity 0.3s ease";
           video.classList.remove("fade-out");
-          video.classList.add("show");
+          if (!video.classList.contains("show")) {
+            scheduleOpacityShow(video);
+          }
           if (video.readyState >= 1) {
             syncPreviewVideoSize(
               video,
@@ -464,9 +483,7 @@ export default function App() {
           webm.type = "video/webm";
           video.appendChild(webm);
           cell.appendChild(video);
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => video.classList.add("show"));
-          });
+          scheduleOpacityShow(video);
           if (video.readyState >= 1) {
             syncPreviewVideoSize(
               video,
@@ -516,6 +533,7 @@ export default function App() {
       if (expandedCellRef.current) return;
       const hv = e.currentTarget.querySelector("[data-hover-video]");
       if (hv) {
+        prepareOpacityFadeOut(hv);
         hv.classList.add("fade-out");
         hv.pause();
         hv.currentTime = 0;
@@ -568,12 +586,13 @@ export default function App() {
           video.load();
           video.play().catch(() => {});
         }
-        video.classList.add("show", "fully-expanded");
+        video.classList.add("fully-expanded");
         video.style.width = "";
         video.style.height = "";
         video.style.minWidth = "";
         video.style.minHeight = "";
         video.style.transition = "";
+        scheduleOpacityShow(video);
 
         projectDotsRef.current?.classList.add("show");
         setActivePanelIndex(0);
@@ -653,12 +672,13 @@ export default function App() {
           video.load();
           video.play().catch(() => {});
         }
-        video.classList.add("show", "fully-expanded");
+        video.classList.add("fully-expanded");
         video.style.width = "";
         video.style.height = "";
         video.style.minWidth = "";
         video.style.minHeight = "";
         video.style.transition = "";
+        scheduleOpacityShow(video);
 
         projectDotsRef.current?.classList.add("show");
         setActivePanelIndex(0);
@@ -696,7 +716,7 @@ export default function App() {
 
           const addVideo = (src) => {
             const v = document.createElement("video");
-            v.className = "project-preview-video show fully-expanded";
+            v.className = "project-preview-video fully-expanded";
             v.muted = true;
             v.loop = true;
             v.playsInline = true;
@@ -726,10 +746,14 @@ export default function App() {
           };
 
           if (vidConfig.vid1) {
-            dualVideoPanel.appendChild(addVideo(vidConfig.vid1));
+            const v1 = addVideo(vidConfig.vid1);
+            dualVideoPanel.appendChild(v1);
+            scheduleOpacityShow(v1);
           }
           if (vidConfig.vid2) {
-            dualVideoPanel.appendChild(addVideo(vidConfig.vid2));
+            const v2 = addVideo(vidConfig.vid2);
+            dualVideoPanel.appendChild(v2);
+            scheduleOpacityShow(v2);
           }
           galleryEl.appendChild(dualVideoPanel);
 
@@ -751,7 +775,7 @@ export default function App() {
         if (!video) {
           video = document.createElement("video");
           video.setAttribute("data-hover-video", "");
-          video.className = "project-preview-video show fully-expanded";
+          video.className = "project-preview-video fully-expanded";
           video.muted = true;
           video.loop = true;
           video.playsInline = true;
@@ -778,6 +802,7 @@ export default function App() {
           cell.appendChild(video);
           video.load();
           video.play().catch(() => {});
+          scheduleOpacityShow(video);
         } else {
           video.style.width = "";
           video.style.height = "";
@@ -785,6 +810,9 @@ export default function App() {
           video.style.minHeight = "";
           video.style.transition = "";
           video.classList.add("fully-expanded");
+          if (!video.classList.contains("show")) {
+            scheduleOpacityShow(video);
+          }
         }
       } else {
         const video = cell.querySelector("[data-hover-video]");
@@ -859,9 +887,11 @@ export default function App() {
       const gallery = cell.querySelector(".project-gallery-container");
       const videoOnly = cell.querySelector("[data-hover-video]");
       if (gallery) {
+        prepareOpacityFadeOut(gallery);
         gallery.classList.add("fade-out");
         setTimeout(() => gallery.remove(), 400);
       } else if (videoOnly) {
+        prepareOpacityFadeOut(videoOnly);
         videoOnly.classList.add("fade-out");
         setTimeout(() => videoOnly.remove(), 400);
       }

@@ -136,6 +136,9 @@ main.collapsing .developer-clip-container .letter.project-letter {
   position: absolute;
   top: 0; left: 0;
   width: 100%; height: 100%;
+  opacity: 1;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
   overflow-x: hidden;
   overflow-y: auto;
   scroll-snap-type: y mandatory;
@@ -172,13 +175,16 @@ main.collapsing .developer-clip-container .letter.project-letter {
   position: relative;
   object-fit: contain;
   pointer-events: none;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 .project-cell .project-preview-video {
   position: absolute;
   top: 50%;
   left: 50%;
-  transform: translate(-50%, -50%);
+  -webkit-transform: translate(-50%, -50%) translateZ(0);
+  transform: translate(-50%, -50%) translateZ(0);
   width: 120%;
   height: 120%;
   object-fit: contain;
@@ -203,6 +209,8 @@ main.collapsing .developer-clip-container .letter.project-letter {
   transition: opacity 0.3s ease, width 0.4s cubic-bezier(0.4, 0, 0.2, 1), height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+/* Do not set transform here — it overrides .project-cell .project-preview-video's
+   translate(-50%,-50%) for gallery videos (same specificity, this block wins later). */
 .project-panel .project-preview-video {
   width: 100%; height: 100%;
   max-width: 100%; max-height: 100%;
@@ -293,7 +301,7 @@ main.collapsing .developer-clip-container .letter.project-letter {
   pointer-events: none;
   user-select: none;
   z-index: 2;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.28s ease;
 }
 
 .letter-grid-cell {
@@ -367,9 +375,10 @@ main.collapsing .developer-clip-container .letter.project-letter {
   transition: transform 0.6s steps(8, end) !important;
 }
 
-/* Back arrow */
+/* Back arrow — avoid display:none↔block with opacity (mobile skips the fade) */
 .back-arrow {
-  display: none;
+  display: block;
+  visibility: hidden;
   position: fixed;
   font-size: 4rem;
   color: #fff;
@@ -380,17 +389,19 @@ main.collapsing .developer-clip-container .letter.project-letter {
   pointer-events: none;
   font-family: "Nanum Gothic", sans-serif;
   font-weight: 500;
+  transition: opacity 0.35s ease, visibility 0s linear 0.35s;
 }
 
 .back-arrow.show {
+  visibility: visible;
   opacity: 1;
   pointer-events: auto;
-  display: block;
+  transition: opacity 0.35s ease, visibility 0s;
 }
 
 /* Project dots - Pomodoro only, rightmost column */
 .project-dots {
-  display: none;
+  display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
@@ -399,13 +410,16 @@ main.collapsing .developer-clip-container .letter.project-letter {
   top: 50%;
   transform: translateY(-50%);
   z-index: 11;
+  visibility: hidden;
   opacity: 0;
   pointer-events: none;
+  transition: opacity 0.35s ease, visibility 0s linear 0.35s;
 }
 
 .project-dots.show {
-  display: flex;
+  visibility: visible;
   opacity: 1;
+  transition: opacity 0.35s ease, visibility 0s;
 }
 
 .project-dot {
