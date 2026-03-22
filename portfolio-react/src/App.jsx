@@ -21,6 +21,7 @@ import { useGridDimensions } from "./hooks/useGridDimensions";
 import { BackArrow } from "./components/BackArrow";
 import { LetterOverlay } from "./components/LetterOverlay";
 import { projects, projectVideos } from "./data/projects";
+import { preloadPortfolioVideos, revealVideoWhenReady } from "./utils/videoPreload";
 
 const AB_TEST_NO_LOAD_ANIMATIONS = false;
 
@@ -312,16 +313,6 @@ function syncPreviewVideoSize(video, cell, targetCellWidth, targetCellHeight) {
   video.style.minHeight = `${cellHeight}px`;
 }
 
-/** Ensures opacity:0 paints before .show so CSS transitions run (fixes iOS/WebKit skips). */
-function scheduleOpacityShow(el) {
-  if (!el || el.classList.contains("show")) return;
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => {
-      el.classList.add("show");
-    });
-  });
-}
-
 function prepareOpacityFadeOut(el) {
   if (!el) return;
   el.style.transition = "opacity 0.4s ease";
@@ -344,39 +335,12 @@ export default function App() {
   const projectDotsRef = useRef(null);
   const letterOverlayRef = useRef(null);
   const galleryScrollListenerRef = useRef(null);
-  /** Bumps on each expand/collapse so deferred gallery builders never run after a new session. */
-  const expandSessionRef = useRef(0);
-  const pendingGalleryBuildTimeoutRef = useRef(null);
-  const pendingCollapseFadeTimeoutRef = useRef(null);
 
   const reserved = useMemo(() => getReservedCells(cols, rows), [cols, rows]);
   const totalCells = cols * rows;
 
-  const clearDeferredProjectTimers = useCallback(() => {
-    if (pendingGalleryBuildTimeoutRef.current) {
-      clearTimeout(pendingGalleryBuildTimeoutRef.current);
-      pendingGalleryBuildTimeoutRef.current = null;
-    }
-    if (pendingCollapseFadeTimeoutRef.current) {
-      clearTimeout(pendingCollapseFadeTimeoutRef.current);
-      pendingCollapseFadeTimeoutRef.current = null;
-    }
-  }, []);
-
-  const teardownProjectMediaInCell = useCallback((cell) => {
-    if (!cell) return;
-    const stale = cell.querySelector(".project-gallery-container");
-    if (stale) {
-      const stored = galleryScrollListenerRef.current;
-      if (stored?.gallery === stale && stored?.onGalleryScroll) {
-        stale.removeEventListener("scroll", stored.onGalleryScroll);
-      }
-      if (galleryScrollListenerRef.current?.gallery === stale) {
-        galleryScrollListenerRef.current = null;
-      }
-      stale.remove();
-    }
-    cell.querySelectorAll("[data-hover-video]").forEach((v) => v.remove());
+  useEffect(() => {
+    preloadPortfolioVideos(projectVideos).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -461,7 +425,7 @@ export default function App() {
           video.style.transition = "opacity 0.3s ease";
           video.classList.remove("fade-out");
           if (!video.classList.contains("show")) {
-            scheduleOpacityShow(video);
+            revealVideoWhenReady(video);
           }
           if (video.readyState >= 1) {
             syncPreviewVideoSize(
@@ -514,7 +478,7 @@ export default function App() {
           webm.type = "video/webm";
           video.appendChild(webm);
           cell.appendChild(video);
-          scheduleOpacityShow(video);
+          revealVideoWhenReady(video);
           if (video.readyState >= 1) {
             syncPreviewVideoSize(
               video,
@@ -584,11 +548,6 @@ export default function App() {
       const projectName = pos.project?.name;
       const vidConfig = projectName && projectVideos[projectName];
 
-      expandSessionRef.current += 1;
-      const session = expandSessionRef.current;
-      clearDeferredProjectTimers();
-      teardownProjectMediaInCell(cell);
-
       if (projectName === "Pomodoro Timer" && vidConfig) {
         let video = cell.querySelector("[data-hover-video]");
         if (!video) {
@@ -619,11 +578,6 @@ export default function App() {
           webm.type = "video/webm";
           video.appendChild(webm);
           cell.appendChild(video);
-          video.addEventListener(
-            "loadeddata",
-            () => video.play().catch(() => {}),
-            { once: true },
-          );
           video.load();
           video.play().catch(() => {});
         }
@@ -633,14 +587,12 @@ export default function App() {
         video.style.minWidth = "";
         video.style.minHeight = "";
         video.style.transition = "";
-        scheduleOpacityShow(video);
+        revealVideoWhenReady(video);
 
         projectDotsRef.current?.classList.add("show");
         setActivePanelIndex(0);
 
-        pendingGalleryBuildTimeoutRef.current = setTimeout(() => {
-          pendingGalleryBuildTimeoutRef.current = null;
-          if (session !== expandSessionRef.current) return;
+        setTimeout(() => {
           if (!expandedCellRef.current) return;
           const gallery = cell.querySelector(".project-gallery-container");
           if (gallery) return;
@@ -712,11 +664,6 @@ export default function App() {
           webm.type = "video/webm";
           video.appendChild(webm);
           cell.appendChild(video);
-          video.addEventListener(
-            "loadeddata",
-            () => video.play().catch(() => {}),
-            { once: true },
-          );
           video.load();
           video.play().catch(() => {});
         }
@@ -726,14 +673,12 @@ export default function App() {
         video.style.minWidth = "";
         video.style.minHeight = "";
         video.style.transition = "";
-        scheduleOpacityShow(video);
+        revealVideoWhenReady(video);
 
         projectDotsRef.current?.classList.add("show");
         setActivePanelIndex(0);
 
-        pendingGalleryBuildTimeoutRef.current = setTimeout(() => {
-          pendingGalleryBuildTimeoutRef.current = null;
-          if (session !== expandSessionRef.current) return;
+        setTimeout(() => {
           if (!expandedCellRef.current) return;
           const gallery = cell.querySelector(".project-gallery-container");
           if (gallery) return;
@@ -770,7 +715,7 @@ export default function App() {
             v.muted = true;
             v.loop = true;
             v.playsInline = true;
-            v.preload = "metadata";
+            v.preload = "auto";
             v.controls = false;
             v.setAttribute("playsinline", "");
             v.setAttribute("webkit-playsinline", "");
@@ -798,12 +743,12 @@ export default function App() {
           if (vidConfig.vid1) {
             const v1 = addVideo(vidConfig.vid1);
             dualVideoPanel.appendChild(v1);
-            scheduleOpacityShow(v1);
+            revealVideoWhenReady(v1);
           }
           if (vidConfig.vid2) {
             const v2 = addVideo(vidConfig.vid2);
             dualVideoPanel.appendChild(v2);
-            scheduleOpacityShow(v2);
+            revealVideoWhenReady(v2);
           }
           galleryEl.appendChild(dualVideoPanel);
 
@@ -850,14 +795,9 @@ export default function App() {
           webm.type = "video/webm";
           video.appendChild(webm);
           cell.appendChild(video);
-          video.addEventListener(
-            "loadeddata",
-            () => video.play().catch(() => {}),
-            { once: true },
-          );
           video.load();
           video.play().catch(() => {});
-          scheduleOpacityShow(video);
+          revealVideoWhenReady(video);
         } else {
           video.style.width = "";
           video.style.height = "";
@@ -866,9 +806,8 @@ export default function App() {
           video.style.transition = "";
           video.classList.add("fully-expanded");
           if (!video.classList.contains("show")) {
-            scheduleOpacityShow(video);
+            revealVideoWhenReady(video);
           }
-          video.play().catch(() => {});
         }
       } else {
         const video = cell.querySelector("[data-hover-video]");
@@ -886,11 +825,10 @@ export default function App() {
       letterOverlayRef.current?.updateProject?.(projectName);
       expandedCellRef.current = { cell, pos };
     },
-    [cols, rows, cellSize, clearDeferredProjectTimers, teardownProjectMediaInCell],
+    [cols, rows, cellSize],
   );
 
   const hardReset = useCallback(() => {
-    clearDeferredProjectTimers();
     const expanded = expandedCellRef.current;
     if (expanded) {
       const { cell } = expanded;
@@ -933,33 +871,24 @@ export default function App() {
 
     justCollapsedRef.current = true;
     setTimeout(() => (justCollapsedRef.current = false), 50);
-  }, [cellSize, clearDeferredProjectTimers]);
+  }, [cellSize]);
 
   const handleCollapse = useCallback(() => {
     const expanded = expandedCellRef.current;
     if (!expanded) return;
-    expandSessionRef.current += 1;
-    if (pendingGalleryBuildTimeoutRef.current) {
-      clearTimeout(pendingGalleryBuildTimeoutRef.current);
-      pendingGalleryBuildTimeoutRef.current = null;
-    }
-    if (pendingCollapseFadeTimeoutRef.current) {
-      clearTimeout(pendingCollapseFadeTimeoutRef.current);
-      pendingCollapseFadeTimeoutRef.current = null;
-    }
     const { cell, pos } = expanded;
     if (cell) {
       expandedCellRef.current = null;
       const gallery = cell.querySelector(".project-gallery-container");
       const videoOnly = cell.querySelector("[data-hover-video]");
-      const nodeToFadeRemove = gallery || videoOnly;
-      if (nodeToFadeRemove) {
-        prepareOpacityFadeOut(nodeToFadeRemove);
-        nodeToFadeRemove.classList.add("fade-out");
-        pendingCollapseFadeTimeoutRef.current = setTimeout(() => {
-          pendingCollapseFadeTimeoutRef.current = null;
-          nodeToFadeRemove.remove();
-        }, 400);
+      if (gallery) {
+        prepareOpacityFadeOut(gallery);
+        gallery.classList.add("fade-out");
+        setTimeout(() => gallery.remove(), 400);
+      } else if (videoOnly) {
+        prepareOpacityFadeOut(videoOnly);
+        videoOnly.classList.add("fade-out");
+        setTimeout(() => videoOnly.remove(), 400);
       }
       if (gallery) {
         const stored = galleryScrollListenerRef.current;
