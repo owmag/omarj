@@ -344,9 +344,40 @@ export default function App() {
   const projectDotsRef = useRef(null);
   const letterOverlayRef = useRef(null);
   const galleryScrollListenerRef = useRef(null);
+  /** Bumps on each expand/collapse so deferred gallery builders never run after a new session. */
+  const expandSessionRef = useRef(0);
+  const pendingGalleryBuildTimeoutRef = useRef(null);
+  const pendingCollapseFadeTimeoutRef = useRef(null);
 
   const reserved = useMemo(() => getReservedCells(cols, rows), [cols, rows]);
   const totalCells = cols * rows;
+
+  const clearDeferredProjectTimers = useCallback(() => {
+    if (pendingGalleryBuildTimeoutRef.current) {
+      clearTimeout(pendingGalleryBuildTimeoutRef.current);
+      pendingGalleryBuildTimeoutRef.current = null;
+    }
+    if (pendingCollapseFadeTimeoutRef.current) {
+      clearTimeout(pendingCollapseFadeTimeoutRef.current);
+      pendingCollapseFadeTimeoutRef.current = null;
+    }
+  }, []);
+
+  const teardownProjectMediaInCell = useCallback((cell) => {
+    if (!cell) return;
+    const stale = cell.querySelector(".project-gallery-container");
+    if (stale) {
+      const stored = galleryScrollListenerRef.current;
+      if (stored?.gallery === stale && stored?.onGalleryScroll) {
+        stale.removeEventListener("scroll", stored.onGalleryScroll);
+      }
+      if (galleryScrollListenerRef.current?.gallery === stale) {
+        galleryScrollListenerRef.current = null;
+      }
+      stale.remove();
+    }
+    cell.querySelectorAll("[data-hover-video]").forEach((v) => v.remove());
+  }, []);
 
   useEffect(() => {
     const valid = getValidIndices(cols, rows, reserved);
@@ -553,6 +584,11 @@ export default function App() {
       const projectName = pos.project?.name;
       const vidConfig = projectName && projectVideos[projectName];
 
+      expandSessionRef.current += 1;
+      const session = expandSessionRef.current;
+      clearDeferredProjectTimers();
+      teardownProjectMediaInCell(cell);
+
       if (projectName === "Pomodoro Timer" && vidConfig) {
         let video = cell.querySelector("[data-hover-video]");
         if (!video) {
@@ -583,6 +619,11 @@ export default function App() {
           webm.type = "video/webm";
           video.appendChild(webm);
           cell.appendChild(video);
+          video.addEventListener(
+            "loadeddata",
+            () => video.play().catch(() => {}),
+            { once: true },
+          );
           video.load();
           video.play().catch(() => {});
         }
@@ -597,7 +638,9 @@ export default function App() {
         projectDotsRef.current?.classList.add("show");
         setActivePanelIndex(0);
 
-        setTimeout(() => {
+        pendingGalleryBuildTimeoutRef.current = setTimeout(() => {
+          pendingGalleryBuildTimeoutRef.current = null;
+          if (session !== expandSessionRef.current) return;
           if (!expandedCellRef.current) return;
           const gallery = cell.querySelector(".project-gallery-container");
           if (gallery) return;
@@ -669,6 +712,11 @@ export default function App() {
           webm.type = "video/webm";
           video.appendChild(webm);
           cell.appendChild(video);
+          video.addEventListener(
+            "loadeddata",
+            () => video.play().catch(() => {}),
+            { once: true },
+          );
           video.load();
           video.play().catch(() => {});
         }
@@ -683,7 +731,9 @@ export default function App() {
         projectDotsRef.current?.classList.add("show");
         setActivePanelIndex(0);
 
-        setTimeout(() => {
+        pendingGalleryBuildTimeoutRef.current = setTimeout(() => {
+          pendingGalleryBuildTimeoutRef.current = null;
+          if (session !== expandSessionRef.current) return;
           if (!expandedCellRef.current) return;
           const gallery = cell.querySelector(".project-gallery-container");
           if (gallery) return;
@@ -800,6 +850,11 @@ export default function App() {
           webm.type = "video/webm";
           video.appendChild(webm);
           cell.appendChild(video);
+          video.addEventListener(
+            "loadeddata",
+            () => video.play().catch(() => {}),
+            { once: true },
+          );
           video.load();
           video.play().catch(() => {});
           scheduleOpacityShow(video);
@@ -813,6 +868,7 @@ export default function App() {
           if (!video.classList.contains("show")) {
             scheduleOpacityShow(video);
           }
+          video.play().catch(() => {});
         }
       } else {
         const video = cell.querySelector("[data-hover-video]");
@@ -830,10 +886,11 @@ export default function App() {
       letterOverlayRef.current?.updateProject?.(projectName);
       expandedCellRef.current = { cell, pos };
     },
-    [cols, rows, cellSize],
+    [cols, rows, cellSize, clearDeferredProjectTimers, teardownProjectMediaInCell],
   );
 
   const hardReset = useCallback(() => {
+    clearDeferredProjectTimers();
     const expanded = expandedCellRef.current;
     if (expanded) {
       const { cell } = expanded;
@@ -876,24 +933,33 @@ export default function App() {
 
     justCollapsedRef.current = true;
     setTimeout(() => (justCollapsedRef.current = false), 50);
-  }, [cellSize]);
+  }, [cellSize, clearDeferredProjectTimers]);
 
   const handleCollapse = useCallback(() => {
     const expanded = expandedCellRef.current;
     if (!expanded) return;
+    expandSessionRef.current += 1;
+    if (pendingGalleryBuildTimeoutRef.current) {
+      clearTimeout(pendingGalleryBuildTimeoutRef.current);
+      pendingGalleryBuildTimeoutRef.current = null;
+    }
+    if (pendingCollapseFadeTimeoutRef.current) {
+      clearTimeout(pendingCollapseFadeTimeoutRef.current);
+      pendingCollapseFadeTimeoutRef.current = null;
+    }
     const { cell, pos } = expanded;
     if (cell) {
       expandedCellRef.current = null;
       const gallery = cell.querySelector(".project-gallery-container");
       const videoOnly = cell.querySelector("[data-hover-video]");
-      if (gallery) {
-        prepareOpacityFadeOut(gallery);
-        gallery.classList.add("fade-out");
-        setTimeout(() => gallery.remove(), 400);
-      } else if (videoOnly) {
-        prepareOpacityFadeOut(videoOnly);
-        videoOnly.classList.add("fade-out");
-        setTimeout(() => videoOnly.remove(), 400);
+      const nodeToFadeRemove = gallery || videoOnly;
+      if (nodeToFadeRemove) {
+        prepareOpacityFadeOut(nodeToFadeRemove);
+        nodeToFadeRemove.classList.add("fade-out");
+        pendingCollapseFadeTimeoutRef.current = setTimeout(() => {
+          pendingCollapseFadeTimeoutRef.current = null;
+          nodeToFadeRemove.remove();
+        }, 400);
       }
       if (gallery) {
         const stored = galleryScrollListenerRef.current;
