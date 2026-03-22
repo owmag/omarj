@@ -68,7 +68,8 @@ main[data-initial-animating] .highlight-grid {
 }
 
 /* Vanilla collapse: no React re-renders during animation */
-main.collapsing .back-arrow {
+main.collapsing .back-arrow,
+main.collapsing .project-dots {
   opacity: 0 !important;
   pointer-events: none !important;
 }
@@ -102,6 +103,7 @@ main.collapsing .developer-clip-container .letter.project-letter {
 .highlight-grid {
   position: fixed;
   top: 0; left: 0; right: 0; bottom: 0;
+  overflow: hidden;
   display: grid;
   grid-template-columns: repeat(var(--grid-cols, 40), 30px);
   grid-template-rows: repeat(var(--grid-rows, 25), 30px);
@@ -115,6 +117,10 @@ main.collapsing .developer-clip-container .letter.project-letter {
   border: 0.5px solid #d7d7d7;
   position: relative;
   overflow: hidden;
+}
+
+.highlight-cell.expanded {
+  margin: -1px;
 }
 
 /* Project gallery */
@@ -178,7 +184,7 @@ main.collapsing .developer-clip-container .letter.project-letter {
   height: 70%;
   max-width: 900px;
   max-height: 600px;
-  transition: opacity 0.3s ease, width 0.5s cubic-bezier(0.4, 0, 0.2, 1), height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.3s ease, width 0.4s cubic-bezier(0.4, 0, 0.2, 1), height 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .project-panel .project-preview-video {
@@ -291,7 +297,7 @@ main.collapsing .developer-clip-container .letter.project-letter {
   position: absolute;
   font-family: "Doto", "Arial Narrow", sans-serif;
   font-weight: 500;
-  font-size: 40px;
+  font-size: 25px;
   color: #0727d8;
   z-index: 5;
   pointer-events: auto;
@@ -311,6 +317,7 @@ main.collapsing .developer-clip-container .letter.project-letter {
 
 .letter.project-letter {
   color: white;
+  font-size: 28px;
   width: 60px;
   height: 60px;
   top: -15px;
@@ -342,6 +349,33 @@ main.collapsing .developer-clip-container .letter.project-letter {
   opacity: 1;
   pointer-events: auto;
   display: block;
+}
+
+/* Project dots - Pomodoro only, rightmost column */
+.project-dots {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  position: fixed;
+  right: 24px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 11;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.project-dots.show {
+  display: flex;
+  opacity: 1;
+}
+
+.project-dot {
+  font-family: "Doto", "Arial Narrow", sans-serif;
+  font-size: 20px;
+  color: #fff;
+  line-height: 1;
 }
 
 @media (hover: none) and (pointer: coarse) {

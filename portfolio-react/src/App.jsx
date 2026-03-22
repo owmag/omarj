@@ -126,17 +126,38 @@ function partialExpand(gridEl, cols, rows, row, col) {
   const expandedHeight = 150;
   const normal = 30;
   const minRowHeight = 5;
+  const minColWidth = 5;
   const widthDist = expandedWidth - normal;
   const heightDist = expandedHeight - normal;
 
-  const colSizes = Array.from({ length: cols }, (_, c) => {
-    if (c === col) return `${expandedWidth}px`;
-    let squeeze = normal;
-    if (expandLeft && c < col) squeeze = normal - widthDist / (col || 1);
-    else if (!expandLeft && c > col)
-      squeeze = normal - widthDist / (cols - col - 1 || 1);
-    return `${Math.max(squeeze, 5)}px`;
-  });
+  let colSizes;
+  if (expandLeft) {
+    colSizes = Array.from({ length: cols }, (_, c) => {
+      if (c === col) return `${expandedWidth}px`;
+      let squeeze = normal;
+      if (c < col) squeeze = normal - widthDist / (col || 1);
+      return `${Math.max(squeeze, minColWidth)}px`;
+    });
+  } else {
+    const colsLeft = col;
+    const colsRight = cols - col - 1;
+    const leftColsTotal = colsLeft * normal;
+    const rightColsMinTotal = colsRight * minColWidth;
+    const availableForExpandedAndRight = window.innerWidth - leftColsTotal;
+    const maxExpandedWidth = Math.max(
+      normal + minColWidth,
+      availableForExpandedAndRight - rightColsMinTotal,
+    );
+    const actualExpandedWidth = Math.min(expandedWidth, maxExpandedWidth);
+    const rightColsTotal = availableForExpandedAndRight - actualExpandedWidth;
+    const rightColSize = colsRight > 0 ? rightColsTotal / colsRight : normal;
+
+    colSizes = Array.from({ length: cols }, (_, c) => {
+      if (c === col) return `${actualExpandedWidth}px`;
+      if (c > col) return `${Math.max(rightColSize, minColWidth)}px`;
+      return `${normal}px`;
+    });
+  }
 
   const rowsAbove = row - headerEndRow - 1;
   const rowsBelow = footerStartRow - row - 1;
@@ -199,10 +220,10 @@ function expandGrid(gridEl, cols, rows, clickedCol, clickedRow, cellSize) {
   gridEl.style.transition =
     "grid-template-columns 0.7s cubic-bezier(0.4, 0, 0.2, 1), grid-template-rows 0.7s cubic-bezier(0.4, 0, 0.2, 1)";
   gridEl.style.gridTemplateColumns = Array.from({ length: cols }, (_, c) =>
-    c === clickedCol ? `${window.innerWidth}px` : "0px",
+    c === clickedCol ? `${window.innerWidth + 2}px` : "0px",
   ).join(" ");
   gridEl.style.gridTemplateRows = Array.from({ length: rows }, (_, r) =>
-    r === clickedRow ? `${window.innerHeight}px` : "0px",
+    r === clickedRow ? `${window.innerHeight + 2}px` : "0px",
   ).join(" ");
 }
 
@@ -228,6 +249,7 @@ export default function App() {
   const [projectPositions, setProjectPositions] = useState([]);
   const [isInitialAnimating, setIsInitialAnimating] = useState(false);
   const backArrowRef = useRef(null);
+  const projectDotsRef = useRef(null);
   const letterOverlayRef = useRef(null);
 
   const reserved = useMemo(() => getReservedCells(cols, rows), [cols, rows]);
@@ -419,6 +441,9 @@ export default function App() {
       cell.style.zIndex = "1000";
       backArrowRef.current?.classList.add("show");
       mainRef.current?.setAttribute("data-expanded", "");
+      if (pos.project?.name === "Pomodoro Timer") {
+        projectDotsRef.current?.classList.add("show");
+      }
       letterOverlayRef.current?.updateProject?.(pos.project?.name);
       expandedCellRef.current = { cell, pos };
     },
@@ -448,10 +473,9 @@ export default function App() {
       mainRef.current?.classList.remove("collapsing");
       mainRef.current?.removeAttribute("data-expanded");
       backArrowRef.current?.classList.remove("show");
+      projectDotsRef.current?.classList.remove("show");
       letterOverlayRef.current?.updateProject?.(null);
       cell.classList.remove("expanded");
-      cell.style.gridColumn = pos ? `${pos.col + 1}` : "";
-      cell.style.gridRow = pos ? `${pos.row + 1}` : "";
       cell.style.zIndex = "";
       expandedCellRef.current = null;
     }, 700);
@@ -459,7 +483,12 @@ export default function App() {
 
   useEffect(() => {
     const handleResize = () => {
-      if (expandedCellRef.current) handleCollapse();
+      if (expandedCellRef.current) {
+        gridRef.current
+          ?.querySelectorAll("[data-hover-video]")
+          .forEach((v) => v.remove());
+        handleCollapse();
+      }
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
@@ -509,6 +538,11 @@ export default function App() {
       />
 
       <BackArrow ref={backArrowRef} onClick={handleCollapse} />
+      <div ref={projectDotsRef} className="project-dots" aria-hidden="true">
+        <span className="project-dot">•</span>
+        <span className="project-dot">•</span>
+        <span className="project-dot">•</span>
+      </div>
     </main>
   );
 }
