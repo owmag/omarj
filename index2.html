@@ -1,0 +1,2488 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+    />
+    <title>Mouse Position — Crosshair Cursor</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Doto:wght@100..900&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic&display=swap" rel="stylesheet">
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Doto:wght@100..900&display=swap" rel="stylesheet">
+    
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        cursor: crosshair;
+        overflow: hidden;
+      }
+
+      /* OMAR J slides up */
+        .text-slide-up {
+          transform: translate(-50%, -50%) translateY(-30px) !important;
+          transition: transform 0.5s steps(8, end) !important;
+        }
+
+        /* FULL-STACK DEVELOPER slides down */
+        .text-slide-down {
+          transform: translate(-50%, -50%) translateY(30px) !important;
+          transition: transform 0.5s steps(8, end) !important;
+        }
+
+        /* OMAR J letters slide down with choppy animation (only on BACK click) */
+        .omar-slide-down {
+          transform: translate(-50%, -50%) translateY(0px) !important;
+          transition: transform 0.5s steps(8, end) !important;
+        }
+
+        /* FULL-STACK letters slide up with choppy animation (only on BACK click) */
+        .fullstack-slide-up {
+          transform: translate(-50%, -50%) translateY(0px) !important;
+          transition: transform 0.5s steps(8, end) !important;
+        }
+
+        /* DEVELOPER letters slide up with choppy animation (only on BACK click) */
+        .developer-slide-up {
+          transform: translate(-50%, -50%) translateY(0px) !important;
+          transition: transform 0.5s steps(8, end) !important;
+        }
+
+        /* PROJECT TITLE letters slide UP back to higher position with choppy animation (only on BACK click) */
+        .project-slide-down {
+          transform: translate(-50%, -50%) translateY(-30px) !important;
+          transition: transform 0.5s steps(8, end) !important;
+        }
+        
+
+        @keyframes move-left {
+          0% {
+            left: var(--start-position);
+          }
+          100% {
+            left: calc(var(--start-position) - var(--total-width) - 40px);
+          }
+        }
+
+        .ticker-crawl {
+          animation: move-left var(--duration) steps(var(--steps), end) infinite;
+        }
+      /* body keeps your original grid background */
+      body {
+        margin: 0;
+        height: 100vh;
+        background: #ffffff;
+        color: #222;
+        font-family: "Nanum Gothic", sans-serif;
+      }
+
+      /* overlay container: full viewport, uses grid to match background */
+      #highlight-grid {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: grid;
+        pointer-events: auto; /* now allows clicks */
+        user-select: none;
+        transition: grid-template-columns 0.3s ease, grid-template-rows 0.3s ease;
+      }
+
+      /* each cell draws its own grey border */
+      .highlight-cell {
+
+        box-sizing: border-box;
+        border: 0.5px solid #d7d7d7;
+        position: relative;
+        overflow: hidden;
+      }
+      
+      /* Snap scroll container for project content */
+      .project-gallery-container {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scroll-snap-type: x mandatory;
+        display: flex;
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE/Edge */
+        -webkit-overflow-scrolling: touch;
+      }
+      
+      .project-gallery-container::-webkit-scrollbar {
+        display: none; /* Chrome/Safari */
+      }
+      
+      /* Each panel in the gallery - strictly match cell dimensions */
+      .project-panel {
+        min-width: 100%;
+        max-width: 100%;
+        width: 100%;
+        height: 100%;
+        scroll-snap-align: start;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        overflow: hidden;
+        position: relative;
+      }
+      
+      /* Video preview - absolute positioned when outside panel */
+      .project-cell > .project-preview-video {
+        position: relative;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        opacity: 0;
+        transition: opacity 0.3s ease, width 0.4s ease, height 0.4s ease, top 0.4s ease, left 0.4s ease;
+        pointer-events: none;
+      }
+      
+      /* Video preview - flex item when inside panel */
+      .project-panel .project-preview-video {
+        position: relative;
+        width: 100%;
+        height: 100%;
+        max-width: 100%;
+        max-height: 100%;
+        object-fit: cover;
+        opacity: 1;
+        transition: width 0.4s ease, height 0.4s ease, object-fit 0.4s ease;
+        pointer-events: none;
+        flex-shrink: 1;
+      }
+      
+      /* When panel has multiple videos, each takes half width */
+      .project-panel[style*="display: flex"] .project-preview-video {
+        width: 50%;
+        flex-shrink: 1;
+      }
+      
+      /* Image preview inside panel - constrain to panel bounds */
+      .project-preview-image {
+        max-width: 100%;
+        max-height: 100%;
+        width: auto;
+        height: auto;
+        object-fit: contain;
+        flex-shrink: 1;
+      }
+      
+      /* Text description inside panel */
+      .project-description {
+        font-family: 'Nanum Gothic', sans-serif;
+        font-size: 16px;
+        line-height: 1.6;
+        color: white;
+        padding: 40px;
+        max-width: 600px;
+        text-align: left;
+        margin: 0;
+      }
+      
+      /* Prevent video controls on all devices */
+      .project-preview-video::-webkit-media-controls {
+        display: none !important;
+      }
+      
+      .project-preview-video::-webkit-media-controls-enclosure {
+        display: none !important;
+      }
+      
+      .project-preview-video::-webkit-media-controls-panel {
+        display: none !important;
+      }
+      
+      .project-cell > .project-preview-video.show {
+        opacity: 1;
+      }
+      
+      /* Video in fully expanded state - half size, centered (when in panel) */
+      .project-panel .project-preview-video.fully-expanded {
+        width: 50%;
+        height: 50%;
+        max-width: 50%;
+        max-height: 50%;
+        object-fit: contain;
+      }
+      
+      /* When panel has multiple videos side by side, adjust sizing */
+      .project-panel[style*="display: flex"] .project-preview-video.fully-expanded {
+        width: 45%;
+        height: 90%;
+        max-width: 45%;
+        max-height: 90%;
+      }
+      
+      /* Larger video on smaller screens */
+      @media (max-width: 1024px) {
+        .project-panel .project-preview-video.fully-expanded {
+          width: 60%;
+          height: 60%;
+          max-width: 60%;
+          max-height: 60%;
+        }
+      }
+      
+      @media (max-width: 768px) {
+        .project-panel .project-preview-video.fully-expanded {
+          width: 75%;
+          height: 75%;
+          max-width: 75%;
+          max-height: 75%;
+        }
+      }
+      
+      @media (max-width: 480px) {
+        .project-panel .project-preview-video.fully-expanded {
+          width: 85%;
+          height: 85%;
+          max-width: 85%;
+          max-height: 85%;
+        }
+      }
+      
+      /* Video in fully expanded state - absolute positioned (when outside panel) */
+      .project-cell > .project-preview-video.fully-expanded {
+        width: 50%;
+        height: 50%;
+        top: 25%;
+        left: 25%;
+        object-fit: contain;
+      }
+      
+      /* Disable hover expansion on touch devices */
+      @media (hover: none) and (pointer: coarse) {
+        .project-cell {
+          pointer-events: auto !important; /* Ensure touch works */
+        }
+      }
+
+      /* Letter grid - same structure as highlight grid but different color */
+      #letter-grid {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: grid;
+        pointer-events: none;
+        user-select: none;
+        z-index: 2;
+      }
+
+      /* Letter grid cells with different colored borders */
+      .letter-grid-cell {
+        box-sizing: border-box;
+        border: 0.5px solid transparent; /* transparent by default */
+      }
+      
+      /* Only show red border on letter rows (top and bottom) */
+      .letter-grid-cell.letter-row-cell {
+        border: 0.5px solid #d7d7d7;
+        background-color: white;
+      }
+
+      /* Mask grids - same structure as other grids */
+      #mask-1-grid, #mask-2-grid {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: grid;
+        pointer-events: none;
+        user-select: none;
+        transition: grid-template-columns 0.3s ease, grid-template-rows 0.3s ease;
+        z-index: 3;
+      }
+
+      #mask-3-grid {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: grid;
+        pointer-events: none;
+        user-select: none;
+        transition: grid-template-columns 0.3s ease, grid-template-rows 0.3s ease;
+        z-index: 4;
+      }
+
+      /* Mask grid cells */
+      .mask-1-grid-cell, .mask-2-grid-cell, .mask-3-grid-cell {
+        box-sizing: border-box;
+        border: transparent; /* transparent grid */
+      }
+
+      /* Clipping containers - positioned in grid */
+      #omar-clip-container, #fullstack-clip-container {
+  position: absolute;
+  overflow: hidden;
+  z-index: 4;
+  pointer-events: none;
+}
+
+#developer-clip-container {
+  position: absolute;
+  overflow: hidden;
+  z-index: 5;
+  pointer-events: none;
+}
+
+      /* OMAR J letters - positioned relative to clipping container */
+      #center-letter, #letter-m, #letter-a, #letter-r, #letter-j {
+        position: absolute;
+        font-family: "Doto", sans-serif;
+        font-optical-sizing: auto;
+        font-weight: 500;
+        font-style: normal;
+        font-variation-settings: "ROND" 0;
+        font-size: 40px;
+        color: #0727d8;
+        z-index: 5;
+        pointer-events: auto;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+
+      /* FULL-STACK letters - positioned relative to clipping container */
+      #bottom-w, #bottom-letter-1, #bottom-letter-2, #bottom-letter-3, #bottom-letter-4, #bottom-letter-5, #bottom-letter-6, #bottom-letter-7, #bottom-letter-8, #bottom-letter-9 {
+        position: absolute;
+        font-family: "Doto", sans-serif;
+        font-optical-sizing: auto;
+        font-weight: 500;
+        font-style: normal;
+        font-variation-settings: "ROND" 0;
+        font-size: 40px;
+        color: #0727d8;
+        z-index: 5;
+        pointer-events: auto;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        mix-blend-mode: difference;
+      }
+
+      /* DEVELOPER letters - positioned relative to clipping container */
+      #bottom-letter-10, #bottom-letter-11, #bottom-letter-12, #bottom-letter-13, #bottom-letter-14, #bottom-letter-15, #bottom-letter-16, #bottom-letter-17, #bottom-letter-18, #bottom-letter-19 {
+        position: absolute;
+        font-family: "Doto", sans-serif;
+        font-optical-sizing: auto;
+        font-weight: 500;
+        font-style: normal;
+        font-variation-settings: "ROND" 0;
+        font-size: 40px;
+        color: #0727d8;
+        z-index: 5;
+        pointer-events: auto;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        mix-blend-mode: difference;
+      }
+
+      /* PROJECT letters - positioned relative to clipping container */
+      #project-p, #project-r, #project-o, #project-j, #project-e, #project-c, #project-t, #project-space1, #project-lparen, #project-c2, #project-l, #project-i, #project-c3, #project-k, #project-e2, #project-d, #project-rparen {
+        position: absolute;
+        font-family: "Doto", sans-serif;
+        font-optical-sizing: auto;
+        font-weight: 500;
+        font-style: normal;
+        font-variation-settings: "ROND" 0;
+        font-size: 40px;
+        color:white;
+        z-index: 5;
+        pointer-events: none;
+        width: 60px;
+        height: 60px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        top: -15px; /* 3 rows higher - positioned well ABOVE DEVELOPER to avoid overlap */
+        transform: translate(-50%, -50%);
+      }
+
+      /* PROJECT letters slide DOWN from higher position into mask */
+      #project-p.text-slide-up, #project-r.text-slide-up, #project-o.text-slide-up, #project-j.text-slide-up, #project-e.text-slide-up, #project-c.text-slide-up, #project-t.text-slide-up, #project-space1.text-slide-up, #project-lparen.text-slide-up, #project-c2.text-slide-up, #project-l.text-slide-up, #project-i.text-slide-up, #project-c3.text-slide-up, #project-k.text-slide-up, #project-e2.text-slide-up, #project-d.text-slide-up, #project-rparen.text-slide-up {
+        transform: translate(-50%, -50%) translateY(30px) !important;
+        transition: transform 0.6s steps(8, end) !important;
+      }
+
+      /* Disable hover effects on mobile/touch devices */
+      @media (hover: none) and (pointer: coarse) {
+        .highlight-grid-cell:hover {
+          background-color: transparent !important;
+          transform: none !important;
+        }
+        
+        .highlight-grid-cell:hover::before {
+          opacity: 0 !important;
+        }
+        
+        .highlight-grid-cell:hover::after {
+          opacity: 0 !important;
+        }
+        
+        #back-arrow:hover {
+          background-color: transparent !important;
+          transform: none !important;
+        }
+        
+        #back-arrow:hover::before {
+          opacity: 0 !important;
+        }
+        
+        #back-arrow:hover::after {
+          opacity: 0 !important;
+        }
+      }
+
+      /* Style for project squares */
+
+
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(5, 100px);
+        grid-template-rows: repeat(5, 100px);
+        transition: grid-template-columns 0.3s ease, grid-template-rows 0.3s ease;
+      }
+
+      .grid.expanded-col-2 {
+        grid-template-columns: 100px 150px 100px 100px 100px; /* Column 2 bigger */
+      }
+
+      .grid.expanded-row-3 {
+        grid-template-rows: 100px 100px 150px 100px 100px; /* Row 3 bigger */
+      }
+
+      #backArrow {
+        display: none;
+        position: fixed;
+        font-size: 4rem;
+        color: #fff;
+        z-index: 11;
+        padding: 12px 15px;
+        border-radius: 8px;
+        opacity: 0;
+        pointer-events: none;
+        font-family: "Nanum Gothic", sans-serif;
+        font-weight: 500;
+        font-style: normal;
+      }
+
+      #backArrow.show {
+        opacity: 1;
+        pointer-events: auto;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <main id="app" aria-label="Mouse tracking page" role="main">
+      <div id="highlight-grid"></div>
+      <div id="letter-grid"></div>
+      <div id="mask-1-grid">
+        <div id="omar-clip-container">
+          <div id="center-letter">O</div>
+          <div id="letter-m">M</div>
+          <div id="letter-a">A</div>
+          <div id="letter-r">R</div>
+          <div id="letter-j">J</div>
+        </div>
+      </div>
+      <div id="mask-2-grid">
+        <div id="fullstack-clip-container">
+          <div id="bottom-w">F</div>
+          <div id="bottom-letter-1">U</div>
+          <div id="bottom-letter-2">L</div>
+          <div id="bottom-letter-3">L</div>
+          <div id="bottom-letter-4">-</div>
+          <div id="bottom-letter-5">S</div>
+          <div id="bottom-letter-6">T</div>
+          <div id="bottom-letter-7">A</div>
+          <div id="bottom-letter-8">C</div>
+          <div id="bottom-letter-9">K</div>
+        </div>
+      </div>
+      <div id="mask-3-grid">
+        <div id="developer-clip-container">
+          <div id="bottom-letter-10"></div>
+          <div id="bottom-letter-11">D</div>
+          <div id="bottom-letter-12">E</div>
+          <div id="bottom-letter-13">V</div>
+          <div id="bottom-letter-14">E</div>
+          <div id="bottom-letter-15">L</div>
+          <div id="bottom-letter-16">O</div>
+          <div id="bottom-letter-17">P</div>
+          <div id="bottom-letter-18">E</div>
+          <div id="bottom-letter-19">R</div>
+          <div id="project-p">P</div>
+          <div id="project-r">R</div>
+          <div id="project-o">O</div>
+          <div id="project-j">J</div>
+          <div id="project-e">E</div>
+          <div id="project-c">C</div>
+          <div id="project-t">T</div>
+          <div id="project-space1"> </div>
+          <div id="project-lparen">(</div>
+          <div id="project-c2">c</div>
+          <div id="project-l">l</div>
+          <div id="project-i">i</div>
+          <div id="project-c3">c</div>
+          <div id="project-k">k</div>
+          <div id="project-e2">e</div>
+          <div id="project-d">d</div>
+          <div id="project-rparen">)</div>
+        </div>
+      </div>
+    </main>
+    
+    <script>
+      const highlightGrid = document.getElementById('highlight-grid');
+      const letterGrid = document.getElementById('letter-grid');
+      
+      // Store cleanup timeouts to cancel them if needed
+      let pendingCleanupTimeouts = new Map();
+      
+      // Video preview mapping for projects
+      const projectVideos = {
+        "Pomodoro Timer": {
+          webm: "videos/pomodorotimer-preview.webm",
+          mp4: "videos/pomodorotimer-preview.mp4"
+        },
+        "welcome.audio": {
+          webm: "videos/welcomeaudio-preview.webm",
+          mp4: "videos/welcomeaudio-preview.mp4"
+        }
+        // Add more projects here as you create their videos
+      };
+      const centerLetter = document.getElementById('center-letter');
+      const letterM = document.getElementById('letter-m');
+      const letterA = document.getElementById('letter-a');
+      const letterR = document.getElementById('letter-r');
+      const letterJ = document.getElementById('letter-j');
+      const projectP = document.getElementById('project-p');
+      const projectR = document.getElementById('project-r');
+      const projectO = document.getElementById('project-o');
+      const projectJ = document.getElementById('project-j');
+      const projectE = document.getElementById('project-e');
+      const projectC = document.getElementById('project-c');
+      const projectT = document.getElementById('project-t');
+      const projectSpace1 = document.getElementById('project-space1');
+      const projectLparen = document.getElementById('project-lparen');
+      const projectC2 = document.getElementById('project-c2');
+      const projectL = document.getElementById('project-l');
+      const projectI = document.getElementById('project-i');
+      const projectC3 = document.getElementById('project-c3');
+      const projectK = document.getElementById('project-k');
+      const projectE2 = document.getElementById('project-e2');
+      const projectD = document.getElementById('project-d');
+      const projectRparen = document.getElementById('project-rparen');
+      const bottomW = document.getElementById('bottom-w');
+      const bottomLetter1 = document.getElementById('bottom-letter-1');
+      const bottomLetter2 = document.getElementById('bottom-letter-2');
+      const bottomLetter3 = document.getElementById('bottom-letter-3');
+      const bottomLetter4 = document.getElementById('bottom-letter-4');
+      const bottomLetter5 = document.getElementById('bottom-letter-5');
+      const bottomLetter6 = document.getElementById('bottom-letter-6');
+      const bottomLetter7 = document.getElementById('bottom-letter-7');
+      const bottomLetter8 = document.getElementById('bottom-letter-8');
+      const bottomLetter9 = document.getElementById('bottom-letter-9');
+      const bottomLetter10 = document.getElementById('bottom-letter-10');
+      const bottomLetter11 = document.getElementById('bottom-letter-11');
+      const bottomLetter12 = document.getElementById('bottom-letter-12');
+      const bottomLetter13 = document.getElementById('bottom-letter-13');
+      const bottomLetter14 = document.getElementById('bottom-letter-14');
+      const bottomLetter15 = document.getElementById('bottom-letter-15');
+      const bottomLetter16 = document.getElementById('bottom-letter-16');
+      const bottomLetter17 = document.getElementById('bottom-letter-17');
+      const bottomLetter18 = document.getElementById('bottom-letter-18');
+      const bottomLetter19 = document.getElementById('bottom-letter-19');
+      const backArrow = document.createElement('div');
+      backArrow.id = 'backArrow';
+      backArrow.innerHTML = '←'; 
+      document.body.appendChild(backArrow);
+
+      const offsetX = 20; // Distance in pixels to offset horizontally from cursor
+      const offsetY = 20; // Distance in pixels to offset vertically from cursor
+      const padding = 20; // Distance from edge before snapping
+
+      let cols = 0;
+      let rows = 0;
+      let expandedCell = null;
+      let isMouseDown = false; 
+      let mouseDownOnCell = null; // track which cell was pressed
+      let isHoveringBackArrow = false;
+      let arrowMouseDown = false;
+      let justCollapsed = false;
+
+      // Define cascadeLanding function in global scope (used by hover and resize animations)
+      const nonLetters = '0123456789!@#$%^&*()_+-=[]{}|;:,.<>?/~`';
+      
+      const cascadeLanding = (element, finalLetter, landingDelay) => {
+        // Generate 6 random characters
+        const randomChars = [];
+        for (let i = 0; i < 6; i++) {
+          let randomChar;
+          do {
+            randomChar = nonLetters[Math.floor(Math.random() * nonLetters.length)];
+          } while (randomChars.includes(randomChar));
+          randomChars.push(randomChar);
+        }
+        
+        let currentIndex = 0;
+        let isLanding = false;
+        
+        const animateChar = () => {
+          if (!isLanding) {
+            // Keep shuffling random characters
+            element.textContent = randomChars[currentIndex];
+            currentIndex = (currentIndex + 1) % randomChars.length;
+            setTimeout(animateChar, 125);
+          } else {
+            // Land on final letter
+            element.textContent = finalLetter;
+          }
+        };
+        
+        // Start shuffling immediately
+        animateChar();
+        
+        // Set landing time
+        setTimeout(() => {
+          isLanding = true;
+        }, landingDelay);
+      };
+
+      // Landing cascade animation on resize (all start same time, cascade landing)
+      function landingCascadeAnimation() {
+        
+        // All letters start shuffling at the same time (0ms), but land with cascading delays
+        // OMAR J letters with cascading landing
+        cascadeLanding(centerLetter, 'O', 0);    // O - lands immediately
+        cascadeLanding(letterM, 'M', 100);        // M - lands after 50ms
+        cascadeLanding(letterA, 'A', 150);       // A - lands after 100ms
+        cascadeLanding(letterR, 'R', 200);       // R - lands after 150ms
+        cascadeLanding(letterJ, 'J', 350);       // J - lands after 200ms
+
+
+
+        // FULL-STACK DEVELOPER letters with cascading landing
+        cascadeLanding(bottomW, 'F', 250);           // F - lands after 250ms
+        cascadeLanding(bottomLetter1, 'U', 300);     // U - lands after 300ms
+        cascadeLanding(bottomLetter2, 'L', 350);     // L - lands after 350ms
+        cascadeLanding(bottomLetter3, 'L', 400);     // L - lands after 400ms
+        cascadeLanding(bottomLetter4, '-', 450);     // - - lands after 450ms
+        cascadeLanding(bottomLetter5, 'S', 500);     // S - lands after 500ms
+        cascadeLanding(bottomLetter6, 'T', 550);    // T - lands after 550ms
+        cascadeLanding(bottomLetter7, 'A', 600);    // A - lands after 600ms
+        cascadeLanding(bottomLetter8, 'C', 650);    // C - lands after 650ms
+        cascadeLanding(bottomLetter9, 'K', 700);    // K - lands after 700ms
+        // bottomLetter10 is blank gap (no animation)
+        cascadeLanding(bottomLetter11, 'D', 750);   // D - lands after 750ms
+        cascadeLanding(bottomLetter12, 'E', 800);   // E - lands after 800ms
+        cascadeLanding(bottomLetter13, 'V', 850);   // V - lands after 850ms
+        cascadeLanding(bottomLetter14, 'E', 900);   // E - lands after 900ms
+        cascadeLanding(bottomLetter15, 'L', 950);   // L - lands after 950ms
+        cascadeLanding(bottomLetter16, 'O', 1000);  // O - lands after 1000ms
+        cascadeLanding(bottomLetter17, 'P', 1050);  // P - lands after 1050ms
+        cascadeLanding(bottomLetter18, 'E', 1100);  // E - lands after 1100ms
+        cascadeLanding(bottomLetter19, 'R', 1150);  // R - lands after 1150ms
+
+      }
+      
+      // Define addHoverListener function in global scope
+      function addHoverListener(element, letter) {
+        if (element) {
+          // Store the original letter on the element so we always know what it should be
+          element._originalLetter = letter;
+          
+          // Remove any existing event listeners first
+          element.removeEventListener('mouseenter', element._hoverHandler);
+          element.removeEventListener('touchstart', element._touchHandler);
+          
+          // Create hover handler function
+          element._hoverHandler = () => {
+            console.log(`[${letter}] hovered`);
+            // Trigger cascadeLanding animation on hover (0ms delay for immediate effect)
+            cascadeLanding(element, letter, 0);
+          };
+          
+          // Create touch handler function (for tap and swipe)
+          element._touchHandler = (e) => {
+            console.log(`[${letter}] touched`);
+            // Trigger cascadeLanding animation on touch (0ms delay for immediate effect)
+            cascadeLanding(element, letter, 0);
+          };
+          
+          // Add event listeners
+          element.addEventListener('mouseenter', element._hoverHandler);
+          element.addEventListener('touchstart', element._touchHandler, { passive: true });
+        }
+      }
+      
+      // Flag to prevent multiple setups
+      let hoverListenersSetup = false;
+      
+      // Define setupHoverListeners function in global scope
+      function setupHoverListeners() {
+        if (hoverListenersSetup) return;
+        hoverListenersSetup = true;
+        
+        // OMAR J letters
+        addHoverListener(centerLetter, 'O');
+        addHoverListener(letterM, 'M');
+        addHoverListener(letterA, 'A');
+        addHoverListener(letterR, 'R');
+        addHoverListener(letterJ, 'J');
+
+        // FULL-STACK letters
+        addHoverListener(bottomW, 'F');
+        addHoverListener(bottomLetter1, 'U');
+        addHoverListener(bottomLetter2, 'L');
+        addHoverListener(bottomLetter3, 'L');
+        addHoverListener(bottomLetter4, '-');
+        addHoverListener(bottomLetter5, 'S');
+        addHoverListener(bottomLetter6, 'T');
+        addHoverListener(bottomLetter7, 'A');
+        addHoverListener(bottomLetter8, 'C');
+        addHoverListener(bottomLetter9, 'K');
+
+        // DEVELOPER letters (bottomLetter10 is blank gap, no hover listener)
+        addHoverListener(bottomLetter11, 'D');
+        addHoverListener(bottomLetter12, 'E');
+        addHoverListener(bottomLetter13, 'V');
+        addHoverListener(bottomLetter14, 'E');
+        addHoverListener(bottomLetter15, 'L');
+        addHoverListener(bottomLetter16, 'O');
+        addHoverListener(bottomLetter17, 'P');
+        addHoverListener(bottomLetter18, 'E');
+        addHoverListener(bottomLetter19, 'R');
+      }
+      
+      // Setup hover listeners after DOM is ready
+      document.addEventListener('DOMContentLoaded', () => {
+        setupHoverListeners();
+      });
+      
+      // Also setup on window load as backup
+      window.addEventListener('load', () => {
+        setupHoverListeners();
+      });
+      
+      // Add global touchmove listener for swipe detection across letters
+      document.addEventListener('touchmove', (e) => {
+        if (e.touches && e.touches.length > 0) {
+          const touch = e.touches[0];
+          const element = document.elementFromPoint(touch.clientX, touch.clientY);
+          
+          // Check if the element is one of our hoverable letters and hasn't been animated recently
+          if (element && element._originalLetter && !element._isAnimating) {
+            // Get the original letter stored on the element (not textContent which changes during animation)
+            const letter = element._originalLetter;
+            console.log(`[${letter}] swiped`);
+            
+            // Mark as animating to prevent multiple triggers during swipe
+            element._isAnimating = true;
+            
+            // Trigger cascadeLanding animation with the correct original letter
+            cascadeLanding(element, letter, 0);
+            
+            // Reset animation flag after animation completes (6 chars * 125ms = 750ms)
+            setTimeout(() => {
+              element._isAnimating = false;
+            }, 800);
+          }
+        }
+      }, { passive: true });
+
+      window.addEventListener('resize', () => {
+        // If there's an expanded cell, collapse it properly to re-enable follower text
+        if (expandedCell) {
+          collapseCell(expandedCell);
+        }
+        
+        mouseDownOnCell = null;    // clear pressed cell ref
+        isMouseDown = false;       // reset mouse state
+        
+        setupGrid();
+        setupLetterGrid();
+        setupOmarClipMask();
+        setupFullStackClipMask();
+        setupDeveloperClipMask();
+        spawnProjects();
+        landingCascadeAnimation();      // Apply cascading animation on resize
+      });
+
+      // Setup grid cells based on viewport size
+      function setupGrid() {
+        highlightGrid.innerHTML = ''; // Clear existing cells if any
+        cols = Math.ceil(window.innerWidth / 30);
+        rows = Math.ceil(window.innerHeight / 30);  
+        const totalCells = cols * rows;
+        highlightGrid.style.gridTemplateColumns = Array(cols).fill('30px').join(' ');
+        highlightGrid.style.gridTemplateRows = Array(rows).fill('30px').join(' ');  
+
+        // Create empty grid
+        for (let i = 0; i < totalCells; i++) {
+          const cell = document.createElement('div');
+          cell.className = 'highlight-cell';
+          highlightGrid.appendChild(cell);
+        }
+      }
+
+      function darkenHex(hex, amount = 40) {
+        const num = parseInt(hex.slice(1), 16);
+        let r = (num >> 16) - amount;
+        let g = ((num >> 8) & 0x00FF) - amount;
+        let b = (num & 0x0000FF) - amount;
+        r = r < 0 ? 0 : r;
+        g = g < 0 ? 0 : g;
+        b = b < 0 ? 0 : b;
+        return `#${(r << 16 | g << 8 | b).toString(16).padStart(6, '0')}`;
+      }
+
+      // Partial expansion on hover (hovered cell becomes 210px wide × 150px tall)
+      // Expands towards the center by squeezing cells BETWEEN header and footer only
+      function partialExpandCell(cell, row, col) {
+        console.log(`partialExpandCell called: row=${row}, col=${col}, cols=${cols}, rows=${rows}`);
+        
+        // Calculate header and footer boundaries
+        const isSmallScreen = window.innerWidth < 660;
+        const headerEndRow = 1; // Header ends at row 1 (OMAR J row)
+        const footerStartRow = isSmallScreen ? rows - 5 : rows - 3; // Footer starts at bottom letter row
+        
+        console.log(`Header ends at row ${headerEndRow}, Footer starts at row ${footerStartRow}`);
+        
+        // Determine which direction to expand based on position relative to center
+        const centerCol = Math.floor(cols / 2);
+        const centerRow = Math.floor(rows / 2);
+        
+        console.log(`Center: col=${centerCol}, row=${centerRow}`);
+        
+        // Determine expansion direction (INVERTED)
+        const expandLeft = col > centerCol; // If on right side, expand left (squeeze left cells)
+        const expandUp = row > centerRow;    // If on bottom half, expand up (squeeze top cells)
+        
+        console.log(`Expand direction: left=${expandLeft}, up=${expandUp}`);
+        
+        // Target sizes for partial expansion
+        const expandedWidth = 210; // 7 cells worth
+        const expandedHeight = 150; // 5 cells worth
+        
+        // Calculate squeeze amounts
+        const normalWidth = 30;
+        const normalHeight = 30;
+        const widthToDistribute = expandedWidth - normalWidth; // 180px
+        const heightToDistribute = expandedHeight - normalHeight; // 120px
+        
+        // Build column sizes: expand hovered cell, squeeze others proportionally
+        const colSizes = Array.from({ length: cols }, (_, c) => {
+          if (c === col) {
+            return expandedWidth + 'px'; // Hovered cell gets 210px width
+          } else {
+            // Calculate squeeze factor based on distance from edge
+            let squeezeFactor;
+            if (expandLeft) {
+              // Squeeze cells to the LEFT (between edge and hovered cell)
+              if (c < col) {
+                const cellsToSqueeze = col; // Number of cells between edge and hovered
+                const squeezePerCell = widthToDistribute / cellsToSqueeze;
+                squeezeFactor = normalWidth - squeezePerCell;
+              } else {
+                squeezeFactor = normalWidth; // Cells on right stay normal
+              }
+            } else {
+              // Squeeze cells to the RIGHT (between hovered cell and edge)
+              if (c > col) {
+                const cellsToSqueeze = cols - col - 1; // Number of cells between hovered and edge
+                const squeezePerCell = widthToDistribute / cellsToSqueeze;
+                squeezeFactor = normalWidth - squeezePerCell;
+              } else {
+                squeezeFactor = normalWidth; // Cells on left stay normal
+              }
+            }
+            return Math.max(squeezeFactor, 5) + 'px'; // Minimum 5px to keep cells visible
+          }
+        });
+        
+        // Build row sizes: expand hovered cell, squeeze only rows BETWEEN header and footer
+        const rowSizes = Array.from({ length: rows }, (_, r) => {
+          // Keep header rows (0 to headerEndRow) at normal size
+          if (r <= headerEndRow) {
+            return normalHeight + 'px';
+          }
+          // Keep footer rows (footerStartRow to end) at normal size
+          if (r >= footerStartRow) {
+            return normalHeight + 'px';
+          }
+          
+          // Middle section (between header and footer)
+          if (r === row) {
+            return expandedHeight + 'px'; // Hovered cell gets 150px height
+          } else {
+            // Calculate squeeze factor for middle section only
+            let squeezeFactor;
+            if (expandUp) {
+              // Squeeze cells ABOVE (between header and hovered cell)
+              if (r < row && r > headerEndRow) {
+                const cellsToSqueeze = row - headerEndRow - 1; // Cells between header and hovered
+                const squeezePerCell = heightToDistribute / cellsToSqueeze;
+                squeezeFactor = normalHeight - squeezePerCell;
+              } else {
+                squeezeFactor = normalHeight; // Cells below or in header stay normal
+              }
+            } else {
+              // Squeeze cells BELOW (between hovered cell and footer)
+              if (r > row && r < footerStartRow) {
+                const cellsToSqueeze = footerStartRow - row - 1; // Cells between hovered and footer
+                const squeezePerCell = heightToDistribute / cellsToSqueeze;
+                squeezeFactor = normalHeight - squeezePerCell;
+              } else {
+                squeezeFactor = normalHeight; // Cells above or in footer stay normal
+              }
+            }
+            return Math.max(squeezeFactor, 5) + 'px'; // Minimum 5px to keep cells visible
+          }
+        });
+        
+        console.log(`Applying expansion: col ${col} = 210px, row ${row} = 150px`);
+        
+        highlightGrid.style.transition = 'grid-template-columns 0.2s ease, grid-template-rows 0.2s ease';
+        highlightGrid.style.gridTemplateColumns = colSizes.join(' ');
+        highlightGrid.style.gridTemplateRows = rowSizes.join(' ');
+      }
+      
+      // Collapse partial expansion back to normal
+      function collapsePartialCell() {
+        highlightGrid.style.transition = 'grid-template-columns 0.2s ease, grid-template-rows 0.2s ease';
+        highlightGrid.style.gridTemplateColumns = Array(cols).fill('30px').join(' ');
+        highlightGrid.style.gridTemplateRows = Array(rows).fill('30px').join(' ');
+      }
+
+      // Setup letter grid - same structure as main grid
+      function setupLetterGrid() {
+        letterGrid.innerHTML = ''; // Clear existing cells if any
+        const letterCols = Math.ceil(window.innerWidth / 30);
+        const letterRows = Math.ceil(window.innerHeight / 30);
+        const totalLetterCells = letterCols * letterRows;
+        
+        letterGrid.style.gridTemplateColumns = Array(letterCols).fill('30px').join(' ');
+        letterGrid.style.gridTemplateRows = Array(letterRows).fill('30px').join(' ');
+
+        // Calculate which rows have letters
+        const isSmallScreen = window.innerWidth < 660;
+        const topLetterRow = 1; // OMAR J row (second row, 0-indexed)
+        const bottomLetterRow = isSmallScreen ? letterRows - 5 : letterRows - 3; // FULL-STACK row
+
+        // Create letter grid cells
+        for (let i = 0; i < totalLetterCells; i++) {
+          const cell = document.createElement('div');
+          const row = Math.floor(i / letterCols);
+          const col = i % letterCols;
+          
+          cell.className = 'letter-grid-cell';
+          
+          // Add letter-row-cell class if this cell is above/at top letter row or at/below bottom letter row
+          if (row <= topLetterRow || row >= bottomLetterRow) {
+            cell.classList.add('letter-row-cell');
+          }
+          
+          letterGrid.appendChild(cell);
+        }
+        
+        // Position O in top row, 7 columns from the right (moved 2 left)
+        const startCol = letterCols - 7; // 7 columns from the right (was 5)
+        const startRow = 1; // Second row (moved down one)
+        
+        // Position letters relative to the clipping container (15px = center of 30px cell)
+        const letterSpacing = 30; // One grid square width
+        
+        // O - first position
+        centerLetter.style.left = '15px';
+        centerLetter.style.top = '15px';
+        centerLetter.style.transform = 'translate(-50%, -50%)';
+        
+        // M - right next to O
+        letterM.style.left = (15 + letterSpacing) + 'px';
+        letterM.style.top = '15px';
+        letterM.style.transform = 'translate(-50%, -50%)';
+        
+        // A - right next to M
+        letterA.style.left = (15 + letterSpacing * 2) + 'px';
+        letterA.style.top = '15px';
+        letterA.style.transform = 'translate(-50%, -50%)';
+        
+        // R - right next to A
+        letterR.style.left = (15 + letterSpacing * 3) + 'px';
+        letterR.style.top = '15px';
+        letterR.style.transform = 'translate(-50%, -50%)';
+        
+        // J - one blank space after R
+        letterJ.style.left = (15 + letterSpacing * 5) + 'px'; // Skip one position (4) for blank space
+        letterJ.style.top = '15px';
+        letterJ.style.transform = 'translate(-50%, -50%)';
+        
+        
+        // Position FULL-STACK letters relative to their container (15px = center of 30px cell)
+        const fullStackLetters = [bottomW, bottomLetter1, bottomLetter2, bottomLetter3, bottomLetter4, bottomLetter5, bottomLetter6, bottomLetter7, bottomLetter8, bottomLetter9];
+        
+        fullStackLetters.forEach((letter, index) => {
+          letter.style.left = (15 + letterSpacing * index) + 'px';
+          letter.style.top = '15px';
+          letter.style.transform = 'translate(-50%, -50%)';
+        });
+        
+        // Position DEVELOPER letters relative to their container (15px = center of 30px cell)
+        const developerLetters = [bottomLetter10, bottomLetter11, bottomLetter12, bottomLetter13, bottomLetter14, bottomLetter15, bottomLetter16, bottomLetter17, bottomLetter18, bottomLetter19];
+        
+        developerLetters.forEach((letter, index) => {
+          // Position from right edge - R in second last position
+          const letterCols = Math.ceil(window.innerWidth / 30);
+          const endCol = letterCols - 2; // Second most right column
+          const startCol = endCol - 9; // Start 9 positions left of endCol
+          letter.style.left = (startCol * 30 + 15 + letterSpacing * index) + 'px';
+          letter.style.top = '15px';
+          letter.style.transform = 'translate(-50%, -50%)';
+        });
+        
+        // Position PROJECT letters independently within the full-width container
+        const projectLetters = [projectP, projectR, projectO, projectJ, projectE, projectC, projectT, projectSpace1, projectLparen, projectC2, projectL, projectI, projectC3, projectK, projectE2, projectD, projectRparen];
+        
+        projectLetters.forEach((letter, index) => {
+          // Position independently - count from the right edge
+          const letterCols = Math.ceil(window.innerWidth / 30);
+          const endCol = letterCols - 2; // Second most right column
+          const startCol = endCol - 12; // Start 12 positions left of endCol for "welcome.audio" (moved one cell right)
+          letter.style.left = (startCol * 30 + 15 + letterSpacing * index) + 'px';
+          letter.style.top = '-15px'; // 3 rows higher - positioned well ABOVE DEVELOPER to avoid overlap
+          letter.style.transform = 'translate(-50%, -50%)';
+        });
+      }
+
+      function setupOmarClipMask() {
+        const clipContainer = document.getElementById('omar-clip-container');
+        const letterCols = Math.ceil(window.innerWidth / 30);
+        const startCol = letterCols - 7; // 7 columns from the right (moved one cell left)
+        const startRow = 1;
+        
+        // Position container using grid cell coordinates
+        const maskX = startCol * 30; // No need to move left since WELCOME is removed
+        const maskY = startRow * 30;
+        const maskWidth = 6 * 30; // 6 cells wide (O, M, A, R, blank, J)
+        const maskHeight = 30; // 1 cell tall (only OMAR J row)
+        
+        clipContainer.style.left = maskX + 'px';
+        clipContainer.style.top = maskY + 'px';
+        clipContainer.style.width = maskWidth + 'px';
+        clipContainer.style.height = maskHeight + 'px';
+      }
+
+      function setupFullStackClipMask() {
+        const clipContainer = document.getElementById('fullstack-clip-container');
+        const letterCols = Math.ceil(window.innerWidth / 30);
+        const letterRows = Math.ceil(window.innerHeight / 30);
+        const isSmallScreen = window.innerWidth < 660;
+        
+        if (isSmallScreen) {
+          // Small screen: FULL-STACK on fifth last row
+          const fullStackRow = letterRows - 5;
+          const endCol = letterCols - 2;
+          
+          const maskX = (endCol - 9) * 30; // Start from 9 positions left of endCol (moved one cell left)
+          const maskY = fullStackRow * 30;
+          const maskWidth = 10 * 30; // 10 cells wide (F, U, L, L, -, S, T, A, C, K)
+          const maskHeight = 30; // 1 cell tall
+          
+          clipContainer.style.left = maskX + 'px';
+          clipContainer.style.top = maskY + 'px';
+          clipContainer.style.width = maskWidth + 'px';
+          clipContainer.style.height = maskHeight + 'px';
+        } else {
+          // Large screen: FULL-STACK part of single row
+          const bottomRow = letterRows - 3;
+          const endCol = letterCols - 2;
+          
+          const maskX = (endCol - 19) * 30; // Start from 19 positions left of endCol (moved one cell right)
+          const maskY = bottomRow * 30;
+          const maskWidth = 10 * 30; // 9 cells wide (F, U, L, L, -, S, T, A, C, K)
+          const maskHeight = 30; // 1 cell tall
+          
+          clipContainer.style.left = maskX + 'px';
+          clipContainer.style.top = maskY + 'px';
+          clipContainer.style.width = maskWidth + 'px';
+          clipContainer.style.height = maskHeight + 'px';
+        }
+      }
+
+      function setupDeveloperClipMask() {
+        const clipContainer = document.getElementById('developer-clip-container');
+        const letterCols = Math.ceil(window.innerWidth / 30);
+        const letterRows = Math.ceil(window.innerHeight / 30);
+        const isSmallScreen = window.innerWidth < 660;
+        
+        if (isSmallScreen) {
+          // Small screen: DEVELOPER on third last row
+          const developerRow = letterRows - 3;
+          const endCol = letterCols - 2;
+          
+          const maskX = 0; // Start from left edge (full viewport width)
+          const maskY = developerRow * 30;
+          const maskWidth = window.innerWidth; // Full viewport width
+          const maskHeight = 30; // 3 cells tall (DEVELOPER row + PROJECT row + extra space)
+          
+          clipContainer.style.left = maskX + 'px';
+          clipContainer.style.top = maskY + 'px';
+          clipContainer.style.width = maskWidth + 'px';
+          clipContainer.style.height = maskHeight + 'px';
+        } else {
+          // Large screen: DEVELOPER part of single row
+          const bottomRow = letterRows - 3;
+          const endCol = letterCols - 2;
+          
+          const maskX = 0; // Start from left edge (full viewport width)
+          const maskY = bottomRow * 30;
+          const maskWidth = window.innerWidth; // Full viewport width
+          const maskHeight = 28; // 3 cells tall (DEVELOPER row + PROJECT row + extra space)
+          
+          clipContainer.style.left = maskX + 'px';
+          clipContainer.style.top = maskY + 'px';
+          clipContainer.style.width = maskWidth + 'px';
+          clipContainer.style.height = maskHeight + 'px';
+        }
+      }
+
+      // Function to update PROJECT letters with actual project name
+      function updateProjectText(projectName) {
+        const projectLetters = [projectP, projectR, projectO, projectJ, projectE, projectC, projectT, projectSpace1, projectLparen, projectC2, projectL, projectI, projectC3, projectK, projectE2, projectD, projectRparen];
+        
+        // Clear all letters first
+        projectLetters.forEach(letter => {
+          if (letter) letter.textContent = '';
+        });
+        
+        // Set the text based on project name
+        if (projectName === "Pomodoro Timer") {
+          // Position Pomodoro Timer - moves one cell right for every 30px below 480px
+          const letterCols = Math.ceil(window.innerWidth / 30);
+          const endCol = letterCols - 2; // Second most right column
+          const basePosition = endCol - 13; // Base position (one cell left from normal)
+          const cellsToMoveRight = window.innerWidth < 480 ? Math.floor((480 - window.innerWidth) / 30) : 0;
+          const startCol = basePosition + cellsToMoveRight; // Move right by adding cells
+          
+          projectP.textContent = 'P';
+          projectP.style.left = (startCol * 30 + 15) + 'px';
+          projectR.textContent = 'o';
+          projectR.style.left = (startCol * 30 + 15 + 30) + 'px';
+          projectO.textContent = 'm';
+          projectO.style.left = (startCol * 30 + 15 + 60) + 'px';
+          projectJ.textContent = 'o';
+          projectJ.style.left = (startCol * 30 + 15 + 90) + 'px';
+          projectE.textContent = 'd';
+          projectE.style.left = (startCol * 30 + 15 + 120) + 'px';
+          projectC.textContent = 'o';
+          projectC.style.left = (startCol * 30 + 15 + 150) + 'px';
+          projectT.textContent = 'r';
+          projectT.style.left = (startCol * 30 + 15 + 180) + 'px';
+          projectSpace1.textContent = 'o';
+          projectSpace1.style.left = (startCol * 30 + 15 + 210) + 'px';
+          projectLparen.textContent = ' ';
+          projectLparen.style.left = (startCol * 30 + 15 + 240) + 'px';
+          projectC2.textContent = 'T';
+          projectC2.style.left = (startCol * 30 + 15 + 270) + 'px';
+          projectL.textContent = 'i';
+          projectL.style.left = (startCol * 30 + 15 + 300) + 'px';
+          projectI.textContent = 'm';
+          projectI.style.left = (startCol * 30 + 15 + 330) + 'px';
+          projectC3.textContent = 'e';
+          projectC3.style.left = (startCol * 30 + 15 + 360) + 'px';
+          projectK.textContent = 'r';
+          projectK.style.left = (startCol * 30 + 15 + 390) + 'px';
+          projectE2.textContent = '';
+          projectD.textContent = '';
+          projectRparen.textContent = '';
+        } else if (projectName === "QUOMMUNE") {
+          // Position QUOMMUNE 5 cells to the right
+          const letterCols = Math.ceil(window.innerWidth / 30);
+          const endCol = letterCols - 2; // Second most right column
+          const startCol = endCol - 7; // Start 7 positions left of endCol (moved 5 cells right from normal position)
+          
+          projectP.textContent = 'Q';
+          projectP.style.left = (startCol * 30 + 15) + 'px';
+          projectR.textContent = 'U';
+          projectR.style.left = (startCol * 30 + 15 + 30) + 'px';
+          projectO.textContent = 'O';
+          projectO.style.left = (startCol * 30 + 15 + 60) + 'px';
+          projectJ.textContent = 'M';
+          projectJ.style.left = (startCol * 30 + 15 + 90) + 'px';
+          projectE.textContent = 'M';
+          projectE.style.left = (startCol * 30 + 15 + 120) + 'px';
+          projectC.textContent = 'U';
+          projectC.style.left = (startCol * 30 + 15 + 150) + 'px';
+          projectT.textContent = 'N';
+          projectT.style.left = (startCol * 30 + 15 + 180) + 'px';
+          projectSpace1.textContent = 'E';
+          projectSpace1.style.left = (startCol * 30 + 15 + 210) + 'px';
+          projectLparen.textContent = '';
+          projectC2.textContent = '';
+          projectL.textContent = '';
+          projectI.textContent = '';
+          projectC3.textContent = '';
+          projectK.textContent = '';
+          projectE2.textContent = '';
+          projectD.textContent = '';
+          projectRparen.textContent = '';
+        } else if (projectName === "TEMPUS Katoomba") {
+          // Position TEMPUS Katoomba - moves one cell right for every 30px below 510px
+          const letterCols = Math.ceil(window.innerWidth / 30);
+          const endCol = letterCols - 2; // Second most right column
+          const basePosition = endCol - 14; // Base position (2 cells left from normal)
+          const cellsToMoveRight = window.innerWidth < 510 ? Math.floor((510 - window.innerWidth) / 30) : 0;
+          const startCol = basePosition + cellsToMoveRight; // Move right by adding cells
+          
+          projectP.textContent = 'T';
+          projectP.style.left = (startCol * 30 + 15) + 'px';
+          projectR.textContent = 'E';
+          projectR.style.left = (startCol * 30 + 15 + 30) + 'px';
+          projectO.textContent = 'M';
+          projectO.style.left = (startCol * 30 + 15 + 60) + 'px';
+          projectJ.textContent = 'P';
+          projectJ.style.left = (startCol * 30 + 15 + 90) + 'px';
+          projectE.textContent = 'U';
+          projectE.style.left = (startCol * 30 + 15 + 120) + 'px';
+          projectC.textContent = 'S';
+          projectC.style.left = (startCol * 30 + 15 + 150) + 'px';
+          projectT.textContent = ' ';
+          projectT.style.left = (startCol * 30 + 15 + 180) + 'px';
+          projectSpace1.textContent = 'K';
+          projectSpace1.style.left = (startCol * 30 + 15 + 210) + 'px';
+          projectLparen.textContent = 'a';
+          projectLparen.style.left = (startCol * 30 + 15 + 240) + 'px';
+          projectC2.textContent = 't';
+          projectC2.style.left = (startCol * 30 + 15 + 270) + 'px';
+          projectL.textContent = 'o';
+          projectL.style.left = (startCol * 30 + 15 + 300) + 'px';
+          projectI.textContent = 'o';
+          projectI.style.left = (startCol * 30 + 15 + 330) + 'px';
+          projectC3.textContent = 'm';
+          projectC3.style.left = (startCol * 30 + 15 + 360) + 'px';
+          projectK.textContent = 'b';
+          projectK.style.left = (startCol * 30 + 15 + 390) + 'px';
+          projectE2.textContent = 'a';
+          projectE2.style.left = (startCol * 30 + 15 + 420) + 'px';
+          projectD.textContent = '';
+          projectRparen.textContent = '';
+        } else if (projectName === "welcome.audio") {
+          // Position welcome.audio - moves one cell right for every 30px below 450px
+          const letterCols = Math.ceil(window.innerWidth / 30);
+          const endCol = letterCols - 2; // Second most right column
+          const basePosition = endCol - 12; // Normal position
+          const cellsToMoveRight = window.innerWidth < 450 ? Math.floor((450 - window.innerWidth) / 30) : 0;
+          const startCol = basePosition + cellsToMoveRight; // Move right by adding cells
+          
+          projectP.textContent = 'w';
+          projectP.style.left = (startCol * 30 + 15) + 'px';
+          projectR.textContent = 'e';
+          projectR.style.left = (startCol * 30 + 15 + 30) + 'px';
+          projectO.textContent = 'l';
+          projectO.style.left = (startCol * 30 + 15 + 60) + 'px';
+          projectJ.textContent = 'c';
+          projectJ.style.left = (startCol * 30 + 15 + 90) + 'px';
+          projectE.textContent = 'o';
+          projectE.style.left = (startCol * 30 + 15 + 120) + 'px';
+          projectC.textContent = 'm';
+          projectC.style.left = (startCol * 30 + 15 + 150) + 'px';
+          projectT.textContent = 'e';
+          projectT.style.left = (startCol * 30 + 15 + 180) + 'px';
+          projectSpace1.textContent = '.';
+          projectSpace1.style.left = (startCol * 30 + 15 + 210) + 'px';
+          projectLparen.textContent = 'a';
+          projectLparen.style.left = (startCol * 30 + 15 + 240) + 'px';
+          projectC2.textContent = 'u';
+          projectC2.style.left = (startCol * 30 + 15 + 270) + 'px';
+          projectL.textContent = 'd';
+          projectL.style.left = (startCol * 30 + 15 + 300) + 'px';
+          projectI.textContent = 'i';
+          projectI.style.left = (startCol * 30 + 15 + 330) + 'px';
+          projectC3.textContent = 'o';
+          projectC3.style.left = (startCol * 30 + 15 + 360) + 'px';
+          projectK.textContent = '';
+          projectE2.textContent = '';
+          projectD.textContent = '';
+          projectRparen.textContent = '';
+        } else if (projectName === "B'WIG'D") {
+          // Position B'WIG'D five cells to the right
+          const letterCols = Math.ceil(window.innerWidth / 30);
+          const endCol = letterCols - 2; // Second most right column
+          const startCol = endCol - 7; // Start 7 positions left of endCol (moved five cells right from normal position)
+          
+          projectP.textContent = 'B';
+          projectP.style.left = (startCol * 30 + 15 + 30) + 'px';
+          projectR.textContent = "'";
+          projectR.style.left = (startCol * 30 + 15 + 60) + 'px';
+          projectO.textContent = 'W';
+          projectO.style.left = (startCol * 30 + 15 + 90) + 'px';
+          projectJ.textContent = 'I';
+          projectJ.style.left = (startCol * 30 + 15 + 120) + 'px';
+          projectE.textContent = 'G';
+          projectE.style.left = (startCol * 30 + 15 + 150) + 'px';
+          projectC.textContent = "'";
+          projectC.style.left = (startCol * 30 + 15 + 180) + 'px';
+          projectT.textContent = 'D';
+          projectT.style.left = (startCol * 30 + 15 + 210) + 'px';
+          projectSpace1.textContent = '';
+          projectLparen.textContent = '';
+          projectC2.textContent = '';
+          projectL.textContent = '';
+          projectI.textContent = '';
+          projectC3.textContent = '';
+          projectK.textContent = '';
+          projectE2.textContent = '';
+          projectD.textContent = '';
+          projectRparen.textContent = '';
+        } else if (projectName === "2nd Model") {
+          // Position 2nd Model 4 cells to the right
+          const letterCols = Math.ceil(window.innerWidth / 30);
+          const endCol = letterCols - 2; // Second most right column
+          const startCol = endCol - 8; // Start 8 positions left of endCol (moved 4 cells right from normal position)
+          
+          projectP.textContent = '2';
+          projectP.style.left = (startCol * 30 + 15) + 'px';
+          projectR.textContent = 'n';
+          projectR.style.left = (startCol * 30 + 15 + 30) + 'px';
+          projectO.textContent = 'd';
+          projectO.style.left = (startCol * 30 + 15 + 60) + 'px';
+          projectJ.textContent = ' ';
+          projectJ.style.left = (startCol * 30 + 15 + 90) + 'px';
+          projectE.textContent = 'M';
+          projectE.style.left = (startCol * 30 + 15 + 120) + 'px';
+          projectC.textContent = 'o';
+          projectC.style.left = (startCol * 30 + 15 + 150) + 'px';
+          projectT.textContent = 'd';
+          projectT.style.left = (startCol * 30 + 15 + 180) + 'px';
+          projectSpace1.textContent = 'e';
+          projectSpace1.style.left = (startCol * 30 + 15 + 210) + 'px';
+          projectLparen.textContent = 'l';
+          projectLparen.style.left = (startCol * 30 + 15 + 240) + 'px';
+          projectC2.textContent = '';
+          projectL.textContent = '';
+          projectI.textContent = '';
+          projectC3.textContent = '';
+          projectK.textContent = '';
+          projectE2.textContent = '';
+          projectD.textContent = '';
+          projectRparen.textContent = '';
+        }
+      }
+
+      function expandCell(cell) {
+        // Hide header and footer instantly (runs first)
+        letterGrid.style.opacity = '0';
+        
+        expandedCell = cell;
+        cell.classList.add('expanded');
+        backArrow.classList.add('show');
+        
+        const cells = Array.from(highlightGrid.children);
+        const clickedIndex = cells.indexOf(cell);
+        const clickedRow = Math.floor(clickedIndex / cols);
+        const clickedCol = clickedIndex % cols;
+
+        // Determine which project was clicked and update PROJECT text
+        const projectName = cell.dataset.project; // Get the actual project name from the cell
+        updateProjectText(projectName);
+        
+        // Check if there's an existing hover video (keep it visible during transition)
+        let existingVideo = cell.querySelector('.project-preview-video');
+        
+        // Cancel any pending cleanup operations for this cell
+        const cellCleanupTimeout = pendingCleanupTimeouts.get(cell);
+        if (cellCleanupTimeout) {
+          clearTimeout(cellCleanupTimeout);
+          pendingCleanupTimeouts.delete(cell);
+        }
+        
+        // Create gallery container with snap scrolling (only for Pomodoro Timer)
+        if (projectName === "Pomodoro Timer") {
+          // Remove any existing gallery first (in case of quick re-click)
+          let existingGallery = cell.querySelector('.project-gallery-container');
+          if (existingGallery) {
+            existingGallery.remove();
+          }
+          
+          let gallery = cell.querySelector('.project-gallery-container');
+          if (!gallery) {
+            gallery = document.createElement('div');
+            gallery.className = 'project-gallery-container';
+            
+            // Panel 1: Video panel (move existing video into it or create new)
+            const videoPanel = document.createElement('div');
+            videoPanel.className = 'project-panel';
+            
+            let video;
+            // Always create a fresh video - don't reuse
+            if (projectVideos[projectName]) {
+              // Create video
+              video = document.createElement('video');
+              video.className = 'project-preview-video show fully-expanded';
+              video.muted = true;
+              video.defaultMuted = true; // Important for iOS
+              video.loop = true;
+              video.playsinline = true;
+              video.playsInline = true;
+              video.autoplay = false; // Don't use autoplay attribute on mobile
+              video.preload = 'metadata';
+              video.controls = false;
+              video.setAttribute('playsinline', '');
+              video.setAttribute('webkit-playsinline', '');
+              video.setAttribute('x5-playsinline', '');
+              video.setAttribute('x-webkit-airplay', 'deny');
+              video.disablePictureInPicture = true;
+              video.setAttribute('disablePictureInPicture', '');
+              
+              // Prevent fullscreen on click
+              video.addEventListener('webkitbeginfullscreen', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              });
+              video.addEventListener('webkitendfullscreen', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              });
+              
+              // Add sources (MP4 first for Safari compatibility)
+              const mp4Source = document.createElement('source');
+              mp4Source.src = projectVideos[projectName].mp4;
+              mp4Source.type = 'video/mp4';
+              video.appendChild(mp4Source);
+              
+              const webmSource = document.createElement('source');
+              webmSource.src = projectVideos[projectName].webm;
+              webmSource.type = 'video/webm';
+              video.appendChild(webmSource);
+              
+              videoPanel.appendChild(video);
+              
+              // Force load and play - multiple attempts for mobile Safari
+              video.load();
+              
+              // Attempt 1: Immediate play
+              const playPromise = video.play();
+              if (playPromise !== undefined) {
+                playPromise.catch(err => {
+                  console.log('First play attempt failed, retrying...', err);
+                  
+                  // Attempt 2: Play after short delay
+                  setTimeout(() => {
+                    video.play().catch(err2 => {
+                      console.log('Second play attempt failed', err2);
+                    });
+                  }, 100);
+                });
+              }
+              
+              // Attempt 3: Play when metadata loads
+              video.addEventListener('loadedmetadata', () => {
+                video.play().catch(err => console.log('Metadata play failed:', err));
+              }, { once: true });
+              
+              // Attempt 4: Play when can play
+              video.addEventListener('canplay', () => {
+                video.play().catch(err => console.log('Canplay attempt failed:', err));
+                
+                // Remove hover video once gallery video starts playing
+                if (existingVideo && existingVideo.parentElement) {
+                  existingVideo.remove();
+                }
+              }, { once: true });
+            }
+            
+            gallery.appendChild(videoPanel);
+            
+            // Also remove hover video after a short delay as backup
+            if (existingVideo) {
+              setTimeout(() => {
+                if (existingVideo.parentElement) {
+                  existingVideo.remove();
+                }
+              }, 200);
+            }
+            
+            // Panel 2: Text description
+            const textPanel = document.createElement('div');
+            textPanel.className = 'project-panel';
+            
+            const description = document.createElement('p');
+            description.className = 'project-description';
+            description.textContent = 'Stay focused and productive with this lightweight, easy-to-use Pomodoro timer — built right into your Chrome tab. Based on the proven Pomodoro Technique, this extension helps you manage work and break sessions without being distracting or complicated.';
+            
+            textPanel.appendChild(description);
+            gallery.appendChild(textPanel);
+            
+            // Panel 3: Image
+            const imagePanel = document.createElement('div');
+            imagePanel.className = 'project-panel';
+            
+            const img = document.createElement('img');
+            img.className = 'project-preview-image';
+            img.src = 'images/pomodoroimg1.png';
+            img.alt = projectName;
+            
+            imagePanel.appendChild(img);
+            gallery.appendChild(imagePanel);
+            
+            cell.appendChild(gallery);
+          }
+        } else if (projectName === "welcome.audio") {
+          // Remove any existing gallery first (in case of quick re-click)
+          let existingGallery = cell.querySelector('.project-gallery-container');
+          if (existingGallery) {
+            existingGallery.remove();
+          }
+          
+          let gallery = cell.querySelector('.project-gallery-container');
+          if (!gallery) {
+            gallery = document.createElement('div');
+            gallery.className = 'project-gallery-container';
+            
+            // Panel 1: Video panel (move existing video into it or create new)
+            const videoPanel = document.createElement('div');
+            videoPanel.className = 'project-panel';
+            
+            let video;
+            // Always create a fresh video - don't reuse
+            if (projectVideos[projectName]) {
+              video = document.createElement('video');
+              video.className = 'project-preview-video show fully-expanded';
+              video.muted = true;
+              video.defaultMuted = true;
+              video.loop = true;
+              video.playsinline = true;
+              video.playsInline = true;
+              video.autoplay = false;
+              video.preload = 'metadata';
+              video.controls = false;
+              video.setAttribute('playsinline', '');
+              video.setAttribute('webkit-playsinline', '');
+              video.setAttribute('x5-playsinline', '');
+              video.setAttribute('x-webkit-airplay', 'deny');
+              video.disablePictureInPicture = true;
+              video.setAttribute('disablePictureInPicture', '');
+              
+              video.addEventListener('webkitbeginfullscreen', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              });
+              video.addEventListener('webkitendfullscreen', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+              });
+              
+              const mp4Source = document.createElement('source');
+              mp4Source.src = projectVideos[projectName].mp4;
+              mp4Source.type = 'video/mp4';
+              video.appendChild(mp4Source);
+              
+              const webmSource = document.createElement('source');
+              webmSource.src = projectVideos[projectName].webm;
+              webmSource.type = 'video/webm';
+              video.appendChild(webmSource);
+              
+              videoPanel.appendChild(video);
+              
+              video.load();
+              const playPromise = video.play();
+              if (playPromise !== undefined) {
+                playPromise.catch(err => {
+                  console.log('First play attempt failed, retrying...', err);
+                  setTimeout(() => {
+                    video.play().catch(err2 => {
+                      console.log('Second play attempt failed', err2);
+                    });
+                  }, 100);
+                });
+              }
+              
+              video.addEventListener('loadedmetadata', () => {
+                video.play().catch(err => console.log('Metadata play failed:', err));
+              }, { once: true });
+              
+              video.addEventListener('canplay', () => {
+                video.play().catch(err => console.log('Canplay attempt failed:', err));
+                
+                // Remove hover video once gallery video can play
+                if (existingVideo && existingVideo.parentElement) {
+                  existingVideo.remove();
+                }
+              }, { once: true });
+              
+              // Also remove hover video after a short delay as backup
+              setTimeout(() => {
+                if (existingVideo && existingVideo.parentElement) {
+                  existingVideo.remove();
+                }
+              }, 200);
+            }
+            
+            gallery.appendChild(videoPanel);
+            
+            // Panel 2: Text description
+            const textPanel = document.createElement('div');
+            textPanel.className = 'project-panel';
+            
+            const description = document.createElement('p');
+            description.className = 'project-description';
+            description.textContent = 'A 24/7 live radio stream featuring curated music and ambient soundscapes. Built with Liquidsoap, Icecast, and custom infrastructure for reliable streaming and listener management.';
+            
+            textPanel.appendChild(description);
+            gallery.appendChild(textPanel);
+            
+            // Panel 3: Two videos side by side
+            const dualVideoPanel = document.createElement('div');
+            dualVideoPanel.className = 'project-panel';
+            dualVideoPanel.style.display = 'flex';
+            dualVideoPanel.style.flexDirection = 'row';
+            dualVideoPanel.style.gap = '10px';
+            
+            // Video 1
+            const video1 = document.createElement('video');
+            video1.className = 'project-preview-video show fully-expanded';
+            video1.muted = true;
+            video1.defaultMuted = true;
+            video1.loop = true;
+            video1.playsinline = true;
+            video1.playsInline = true;
+            video1.autoplay = false;
+            video1.preload = 'metadata';
+            video1.controls = false;
+            video1.setAttribute('playsinline', '');
+            video1.setAttribute('webkit-playsinline', '');
+            video1.setAttribute('x5-playsinline', '');
+            video1.setAttribute('x-webkit-airplay', 'deny');
+            video1.disablePictureInPicture = true;
+            
+            video1.addEventListener('webkitbeginfullscreen', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            });
+            video1.addEventListener('webkitendfullscreen', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            });
+            
+            const video1Mp4 = document.createElement('source');
+            video1Mp4.src = 'videos/welcomeaudio-vid1.mp4';
+            video1Mp4.type = 'video/mp4';
+            video1.appendChild(video1Mp4);
+            
+            const video1Webm = document.createElement('source');
+            video1Webm.src = 'videos/welcomeaudio-vid1.webm';
+            video1Webm.type = 'video/webm';
+            video1.appendChild(video1Webm);
+            
+            // Video 2
+            const video2 = document.createElement('video');
+            video2.className = 'project-preview-video show fully-expanded';
+            video2.muted = true;
+            video2.defaultMuted = true;
+            video2.loop = true;
+            video2.playsinline = true;
+            video2.playsInline = true;
+            video2.autoplay = false;
+            video2.preload = 'metadata';
+            video2.controls = false;
+            video2.setAttribute('playsinline', '');
+            video2.setAttribute('webkit-playsinline', '');
+            video2.setAttribute('x5-playsinline', '');
+            video2.setAttribute('x-webkit-airplay', 'deny');
+            video2.disablePictureInPicture = true;
+            
+            video2.addEventListener('webkitbeginfullscreen', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            });
+            video2.addEventListener('webkitendfullscreen', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            });
+            
+            const video2Mp4 = document.createElement('source');
+            video2Mp4.src = 'videos/welcomeaudio-vid2.mp4';
+            video2Mp4.type = 'video/mp4';
+            video2.appendChild(video2Mp4);
+            
+            const video2Webm = document.createElement('source');
+            video2Webm.src = 'videos/welcomeaudio-vid2.webm';
+            video2Webm.type = 'video/webm';
+            video2.appendChild(video2Webm);
+            
+            dualVideoPanel.appendChild(video1);
+            dualVideoPanel.appendChild(video2);
+            gallery.appendChild(dualVideoPanel);
+            
+            // Play both videos
+            video1.load();
+            video2.load();
+            
+            setTimeout(() => {
+              video1.play().catch(err => console.log('Video 1 play failed:', err));
+              video2.play().catch(err => console.log('Video 2 play failed:', err));
+            }, 100);
+            
+            cell.appendChild(gallery);
+          }
+        } else if (existingVideo) {
+          // For other projects without gallery, just resize the video
+          existingVideo.classList.add('fully-expanded');
+        }
+        
+        // Slide letters up when project opens (pass projectName for ticker logic)
+        slideLettersUp(projectName);
+
+        highlightGrid.style.transition = 'grid-template-columns 0.4s ease, grid-template-rows 0.4s ease';
+
+        const colSizes = Array.from({ length: cols }, (_, c) =>
+          c === clickedCol ? `${window.innerWidth}px` : `0px`
+        );
+        const rowSizes = Array.from({ length: rows }, (_, r) =>
+          r === clickedRow ? `${window.innerHeight}px` : `0px`
+        );
+
+        highlightGrid.style.gridTemplateColumns = colSizes.join(' ');
+        highlightGrid.style.gridTemplateRows = rowSizes.join(' ');
+
+        cell.style.gridColumn = `${clickedCol + 1} / span 1`;
+        cell.style.gridRow = `${clickedRow + 1} / span 1`;
+        cell.style.zIndex = 1000;
+      }
+
+      function collapseCell(cell) {
+        cell.classList.remove('expanded');
+        backArrow.classList.remove('show');
+        expandedCell = null;
+        
+        // If gallery exists, let it fade out naturally with the collapse, then clean up
+        const gallery = cell.querySelector('.project-gallery-container');
+        if (gallery) {
+          const video = gallery.querySelector('.project-preview-video');
+          
+          // Remove gallery after collapse animation completes
+          const cleanupTimeout = setTimeout(() => {
+            // DESTROY EVERYTHING - don't reuse, start fresh next time
+            if (video) {
+              video.pause();
+              video.src = ''; // Clear video source
+              video.remove(); // Remove video element completely
+            }
+            gallery.remove(); // Remove gallery
+            pendingCleanupTimeouts.delete(cell);
+          }, 400); // Match the grid transition duration
+          
+          // Store timeout so it can be cancelled if cell is re-expanded
+          pendingCleanupTimeouts.set(cell, cleanupTimeout);
+        } else {
+          // No gallery, just handle standalone video
+          const video = cell.querySelector('.project-preview-video');
+          if (video) {
+            // Keep fully-expanded class during collapse so video stays 50% size
+            setTimeout(() => {
+              video.classList.remove('show');
+              video.classList.remove('fully-expanded');
+              video.pause();
+              video.currentTime = 0;
+            }, 300); // After opacity fade transition
+          }
+        }
+        
+        // Set flag to prevent immediate hover effects
+        justCollapsed = true;
+        
+        // Clear flag on next mouse move
+        setTimeout(() => { justCollapsed = false; }, 50);
+        
+        // Clear PROJECT letters when project is closed
+        const projectLetters = [projectP, projectR, projectO, projectJ, projectE, projectC, projectT, projectSpace1, projectLparen, projectC2, projectL, projectI, projectC3, projectK, projectE2, projectD, projectRparen];
+        projectLetters.forEach(letter => {
+          if (letter) {
+            letter.textContent = '';
+            letter.classList.remove('text-slide-up');
+            letter.classList.remove('text-slide-down');
+            letter.classList.remove('ticker-crawl'); // Remove ticker animation
+            
+            // Remove any clones that were created for ticker animation
+            const clones = letter.parentNode.querySelectorAll(`[data-clone-of="${letter.id}"]`);
+            clones.forEach(clone => clone.remove());
+          }
+        });
+        
+        // Bring letters back down to original position
+        // OMAR J letters get choppy animation on BACK click
+        const omarLetters = [centerLetter, letterM, letterA, letterR, letterJ];
+        omarLetters.forEach(letter => {
+          if (letter) {
+            letter.classList.remove('text-slide-up');
+            letter.classList.add('omar-slide-down');
+            // Remove the choppy class after animation completes
+            setTimeout(() => {
+              letter.classList.remove('omar-slide-down');
+            }, 500);
+          }
+        });
+
+        // FULL-STACK letters get choppy animation on BACK click
+        const fullstackLetters = [bottomW, bottomLetter1, bottomLetter2, bottomLetter3, bottomLetter4, bottomLetter5, bottomLetter6, bottomLetter7, bottomLetter8, bottomLetter9];
+        fullstackLetters.forEach(letter => {
+          if (letter) {
+            letter.classList.remove('text-slide-down');
+            letter.classList.add('fullstack-slide-up');
+            // Remove the choppy class after animation completes
+            setTimeout(() => {
+              letter.classList.remove('fullstack-slide-up');
+            }, 500);
+          }
+        });
+
+        // DEVELOPER letters get choppy animation on BACK click
+        const developerLetters = [bottomLetter10, bottomLetter11, bottomLetter12, bottomLetter13, bottomLetter14, bottomLetter15, bottomLetter16, bottomLetter17, bottomLetter18, bottomLetter19];
+        developerLetters.forEach(letter => {
+          if (letter) {
+            letter.classList.remove('text-slide-down');
+            letter.classList.add('developer-slide-up');
+            // Remove the choppy class after animation completes
+            setTimeout(() => {
+              letter.classList.remove('developer-slide-up');
+            }, 500);
+          }
+        });
+
+        // PROJECT TITLE letters get choppy animation on BACK click
+        const projectTitleLetters = [projectP, projectR, projectO, projectJ, projectE, projectC, projectT, projectSpace1, projectLparen, projectC2, projectL, projectI, projectC3, projectK, projectE2, projectD, projectRparen];
+        projectTitleLetters.forEach(letter => {
+          if (letter) {
+            letter.classList.remove('text-slide-up');
+            letter.classList.add('project-slide-down');
+            // Remove the choppy class after animation completes
+            setTimeout(() => {
+              letter.classList.remove('project-slide-down');
+            }, 500);
+          }
+        });
+
+        const normalSize = 30;
+
+        highlightGrid.style.transition = 'grid-template-columns 0.4s ease, grid-template-rows 0.4s ease';
+        highlightGrid.style.gridTemplateColumns = Array(cols).fill(`${normalSize}px`).join(' ');
+        highlightGrid.style.gridTemplateRows = Array(rows).fill(`${normalSize}px`).join(' ');
+
+        cell.style.gridColumn = '';
+        cell.style.gridRow = '';
+        cell.style.zIndex = '';
+        
+        // Restore header and footer visibility after all collapse animations complete
+        setTimeout(() => {
+          letterGrid.style.opacity = '1';
+        }, 400); // Match the grid transition duration (0.4s)
+      }
+
+      // Back arrow event handlers
+      backArrow.addEventListener('mousedown', (e) => {
+        arrowMouseDown = true;
+        backArrow.style.opacity = 0.6;
+        e.preventDefault();
+      });
+
+      backArrow.addEventListener('mouseup', (e) => {
+        backArrow.style.opacity = 1;
+        if (!arrowMouseDown) return;
+        arrowMouseDown = false;
+
+        const rect = backArrow.getBoundingClientRect();
+        const x = e.clientX;
+        const y = e.clientY;
+
+        if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom) {
+          if (expandedCell) {
+            collapseCell(expandedCell);
+          }
+        }
+      });
+
+      backArrow.addEventListener('mouseleave', () => {
+        isHoveringBackArrow = false;
+        if (arrowMouseDown) {
+          backArrow.style.opacity = 1;
+        }
+      });
+
+      backArrow.addEventListener('mouseenter', () => {
+        if (justCollapsed) return; // Skip this hover event
+        
+          isHoveringBackArrow = true;
+          if (arrowMouseDown) {
+            backArrow.style.opacity = 0.6;
+          }
+      });
+
+      // Calculate which cells are reserved for letters
+      function getReservedLetterCells() {
+        const reservedCells = new Set();
+        const letterCols = Math.ceil(window.innerWidth / 30);
+        const letterRows = Math.ceil(window.innerHeight / 30);
+        
+        // OMAR J letters (row 1, columns from startCol to startCol+5)
+        const startCol = letterCols - 7; // 7 columns from the right (moved one cell left)
+        const startRow = 1; // Second row
+        
+        // Reserve cells for O, M, A, R, blank space, and J
+        for (let i = 0; i < 6; i++) {
+          const col = startCol + i;
+          reservedCells.add(`${startRow}-${col}`);
+        }
+        
+        // Check if screen is smaller than 22 squares (660px)
+        const isSmallScreen = window.innerWidth < 660;
+        
+        if (isSmallScreen) {
+          // Split into two rows with empty row between: FULL-STACK (fifth last row) and DEVELOPER (third last row)
+          const developerRow = letterRows - 3; // Third last row
+          const fullStackRow = letterRows - 5; // Fifth last row (two above developer row)
+          const endCol = letterCols - 2; // Second most right column
+          
+          // No need to reserve DEVELOPER cells since container is full width and projects don't spawn in that row
+          
+          // Reserve cells for FULL-STACK (9 letters: F, U, L, L, -, S, T, A, C, K)
+          for (let i = 0; i < 9; i++) {
+            const col = endCol - 8 + i; // Start from 8 positions left of endCol (moved one cell left)
+            reservedCells.add(`${fullStackRow}-${col}`);
+          }
+          
+        } else {
+          // Original single row layout - FULL-STACK DEVELOPER (third last row, columns from endCol-18 to endCol-1)
+          const bottomRow = letterRows - 3; // Third last row
+          const endCol = letterCols - 2; // Second most right column
+          
+          // No need to reserve DEVELOPER cells since container is full width and projects don't spawn in that row
+          
+          // Reserve cells for FULL-STACK (9 letters: F, U, L, L, -, S, T, A, C, K)
+          for (let i = 0; i < 9; i++) {
+            const col = endCol - 8 + i; // Start from 8 positions left of endCol
+            reservedCells.add(`${bottomRow}-${col}`);
+          }
+        }
+        
+        return reservedCells;
+      }
+
+      function spawnProjects() {
+        const cells = Array.from(highlightGrid.children);
+        const usedIndices = new Set();
+        const reservedCells = getReservedLetterCells();
+
+        // Define your portfolio items with bound colors
+        const projects = [
+          { name: "Pomodoro Timer",  color: "#cc0521" },
+          { name: "QUOMMUNE",  color: "#85322e" },
+          { name: "TEMPUS Katoomba",color: "#d36445" },
+          { name: "welcome.audio", color: "#0f49d9" },
+          { name: "B'WIG'D", color: "#49994f" },
+          { name: "2nd Model",  color: "#6672ce" }
+        ];
+
+        // Store original project cells for shuffle animation
+        const projectCells = [];
+
+        document.addEventListener('mouseup', () => {
+          arrowMouseDown = false;
+          isMouseDown = false;
+          mouseDownOnCell = null;
+          backArrow.style.opacity = 1;
+        });
+
+        projects.forEach(project => {
+          let randomIndex;
+          let valid = false;
+
+          while (!valid) {
+            randomIndex = Math.floor(Math.random() * cells.length);
+            const col = randomIndex % cols;
+            const row = Math.floor(randomIndex / cols);
+            const cellKey = `${row}-${col}`;
+            
+            // Check if cell is not reserved for letters and meets other criteria
+            if (col !== cols - 1 && row !== rows - 1 && !usedIndices.has(randomIndex) && !reservedCells.has(cellKey)) {
+              // Additional restrictions: no projects above top text or below bottom text (one line higher and one line lower)
+              const isSmallScreen = window.innerWidth < 660;
+              let isValidRow = true;
+              
+              if (isSmallScreen) {
+                // Small screen: no projects one line above OMAR J (row 2) or one line below FULL-STACK (sixth last row)
+                const omarRow = 2; // One line below OMAR J row (was 1)
+                const fullStackRow = Math.ceil(window.innerHeight / 30) - 6; // Sixth last row (was 5)
+                
+                if (row <= omarRow || row >= fullStackRow) {
+                  isValidRow = false;
+                }
+              } else {
+                // Large screen: no projects one line above OMAR J (row 2) or one line below FULL-STACK DEVELOPER (fourth last row)
+                const omarRow = 2; // One line below OMAR J row (was 1)
+                const bottomRow = Math.ceil(window.innerHeight / 30) - 4; // Fourth last row (was 3)
+                
+                if (row <= omarRow || row >= bottomRow) {
+                  isValidRow = false;
+                }
+              }
+              
+              if (isValidRow) {
+                valid = true;
+              }
+            }
+          }
+
+          usedIndices.add(randomIndex);
+          const cell = cells[randomIndex];
+
+          cell.classList.add('project-cell');
+          cell.style.backgroundColor = project.color;
+          cell.dataset.project = project.name;
+          
+          // Store cell position for expansion logic
+          const projectRow = Math.floor(randomIndex / cols);
+          const projectCol = randomIndex % cols;
+          cell.dataset.row = projectRow;
+          cell.dataset.col = projectCol;
+          
+          // Store project cell for shuffle animation
+          projectCells.push({
+            cell: cell,
+            project: project,
+            finalIndex: randomIndex
+          });
+
+          cell.addEventListener('mousedown', () => {
+            if (cell.classList.contains('expanded')) return; // skip darkening if expanded
+            isMouseDown = true;
+            mouseDownOnCell = cell;
+            cell.style.backgroundColor = darkenHex(project.color, 40);
+          });
+
+          cell.addEventListener('mouseenter', () => {
+            // Skip hover effects on touch devices
+            const isTouchDevice = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+            if (isTouchDevice) return;
+            
+            if (justCollapsed) return; // Skip this hover event
+            if (expandedCell) return; // Skip if a project is already fully expanded
+            
+            // Trigger partial expansion (7 cells wide × 5 cells tall)
+            const row = parseInt(cell.dataset.row);
+            const col = parseInt(cell.dataset.col);
+            console.log(`Hovering project cell at row: ${row}, col: ${col}`);
+            partialExpandCell(cell, row, col);
+            
+            // Check if project has video preview
+            if (projectVideos[project.name]) {
+              // Create video element if it doesn't exist
+              let video = cell.querySelector('.project-preview-video');
+              if (!video) {
+                video = document.createElement('video');
+                video.className = 'project-preview-video';
+                video.muted = true;
+                video.loop = true;
+                video.playsinline = true;
+                video.playsInline = true;
+                video.preload = 'auto';
+                video.controls = false;
+                video.setAttribute('playsinline', '');
+                video.setAttribute('webkit-playsinline', '');
+                video.setAttribute('x5-playsinline', '');
+                video.setAttribute('x-webkit-airplay', 'deny');
+                video.disablePictureInPicture = true;
+                video.setAttribute('disablePictureInPicture', '');
+                
+                // Prevent fullscreen on click
+                video.addEventListener('webkitbeginfullscreen', (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                });
+                video.addEventListener('webkitendfullscreen', (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                });
+                
+                // Add sources (MP4 first for Safari compatibility)
+                const mp4Source = document.createElement('source');
+                mp4Source.src = projectVideos[project.name].mp4;
+                mp4Source.type = 'video/mp4';
+                video.appendChild(mp4Source);
+                
+                const webmSource = document.createElement('source');
+                webmSource.src = projectVideos[project.name].webm;
+                webmSource.type = 'video/webm';
+                video.appendChild(webmSource);
+                
+                cell.appendChild(video);
+              }
+              
+              // Show and play video
+              video.classList.add('show');
+              
+              // Ensure video is loaded before playing
+              if (video.readyState >= 2) {
+                video.play().catch(err => console.log('Video play failed:', err));
+              } else {
+                video.addEventListener('loadeddata', () => {
+                  video.play().catch(err => console.log('Video play failed:', err));
+                }, { once: true });
+                video.load();
+              }
+            }
+            
+            if (isMouseDown) {
+              cell.style.backgroundColor = darkenHex(project.color, 40);
+            }
+          });
+
+          cell.addEventListener('mouseleave', () => {
+            if (expandedCell) return; // Skip if a project is fully expanded
+            
+            // Hide video if it exists
+            const video = cell.querySelector('.project-preview-video');
+            if (video) {
+              video.classList.remove('show');
+              video.pause();
+              video.currentTime = 0; // Reset to start
+            }
+            
+            // Collapse partial expansion back to normal
+            collapsePartialCell();
+            
+            if (isMouseDown) {
+              cell.style.backgroundColor = project.color;
+            }
+          });
+
+          const restoreColor = () => {
+            cell.style.backgroundColor = project.color;
+          };
+
+          // Mouseup logic to expand/collapse
+          cell.addEventListener('mouseup', () => {
+            if (cell.classList.contains('expanded')) return; // do nothing if already expanded
+            if (mouseDownOnCell !== cell) return;
+            restoreColor();
+
+            if (expandedCell && expandedCell !== cell) {
+              collapseCell(expandedCell);
+            }
+            expandCell(cell);
+          });
+
+          // Restore color on mouse leave
+          cell.addEventListener('mouseleave', restoreColor);
+        });
+        
+        // Start shuffle animation after all projects are spawned
+        if (projectCells.length > 0) {
+          startShuffleAnimation(projectCells);
+        }
+      }
+
+      function startShuffleAnimation(projectCells) {
+        const shuffleCount = 3;
+        let currentShuffle = 0;
+        
+        function performShuffle() {
+          projectCells.forEach(projectData => {
+            const cell = projectData.cell;
+            const project = projectData.project;
+            
+            // Generate random position that's not reserved
+            let randomIndex;
+            let valid = false;
+            const reservedCells = getReservedLetterCells();
+            
+            while (!valid) {
+              randomIndex = Math.floor(Math.random() * highlightGrid.children.length);
+              const col = randomIndex % cols;
+              const row = Math.floor(randomIndex / cols);
+              const cellKey = `${row}-${col}`;
+              
+              // Check if cell is not reserved and meets other criteria
+              if (col !== cols - 1 && row !== rows - 1 && !reservedCells.has(cellKey)) {
+                // Additional restrictions: no projects above top text or below bottom text (one line higher and one line lower)
+                const isSmallScreen = window.innerWidth < 660;
+                let isValidRow = true;
+                
+                if (isSmallScreen) {
+                  const omarRow = 2; // One line below OMAR J row (was 1)
+                  const fullStackRow = Math.ceil(window.innerHeight / 30) - 6; // Sixth last row (was 5)
+                  
+                  if (row <= omarRow || row >= fullStackRow) {
+                    isValidRow = false;
+                  }
+                } else {
+                  const omarRow = 2; // One line below OMAR J row (was 1)
+                  const bottomRow = Math.ceil(window.innerHeight / 30) - 4; // Fourth last row (was 3)
+                  
+                  if (row <= omarRow || row >= bottomRow) {
+                    isValidRow = false;
+                  }
+                }
+                
+                if (isValidRow) {
+                  valid = true;
+                }
+              }
+            }
+            
+            // Move cell to random position
+            const randomCol = randomIndex % cols;
+            const randomRow = Math.floor(randomIndex / cols);
+            
+            cell.style.gridColumn = `${randomCol + 1}`;
+            cell.style.gridRow = `${randomRow + 1}`;
+          });
+          
+          currentShuffle++;
+          
+          if (currentShuffle < shuffleCount) {
+            // Continue shuffling
+            setTimeout(performShuffle, 250);
+          } else {
+            // Final shuffle - move to final positions
+            setTimeout(() => {
+              projectCells.forEach(projectData => {
+                const cell = projectData.cell;
+                const finalIndex = projectData.finalIndex;
+                const finalCol = finalIndex % cols;
+                const finalRow = Math.floor(finalIndex / cols);
+                
+                cell.style.gridColumn = `${finalCol + 1}`;
+                cell.style.gridRow = `${finalRow + 1}`;
+              });
+            }, 100);
+          }
+        }
+        
+        // Start first shuffle after a short delay
+        setTimeout(performShuffle, 100);
+      }
+
+      // Init
+      // Prevent zoom gestures
+      document.addEventListener('gesturestart', function (e) {
+        e.preventDefault();
+      });
+      
+      document.addEventListener('gesturechange', function (e) {
+        e.preventDefault();
+      });
+      
+      document.addEventListener('gestureend', function (e) {
+        e.preventDefault();
+      });
+
+      setupGrid();
+      setupLetterGrid();
+      setupOmarClipMask();
+      setupFullStackClipMask();
+      setupDeveloperClipMask();
+      spawnProjects(); // Change number to how many project squares you want
+
+      // Separate animations for OMAR J (slide up) and FULL-STACK DEVELOPER (slide down)
+      function slideLettersUp(projectName) {
+        console.log('Sliding letters up and down!'); // Debug log
+        
+        // OMAR J letters - slide UP
+        const omarLetters = [centerLetter, letterM, letterA, letterR, letterJ];
+        omarLetters.forEach(letter => {
+          if (letter) {
+            console.log('Sliding UP:', letter.id); // Debug log
+            letter.classList.add('text-slide-up');
+          }
+        });
+        
+        
+        // PROJECT letters - slide UP from hidden position to visible
+        const projectLetters = [projectP, projectR, projectO, projectJ, projectE, projectC, projectT, projectSpace1, projectLparen, projectC2, projectL, projectI, projectC3, projectK, projectE2, projectD, projectRparen];
+        projectLetters.forEach(letter => {
+          if (letter) {
+            console.log('Sliding UP:', letter.id); // Debug log
+            letter.classList.add('text-slide-up');
+          }
+        });
+        
+        // FULL-STACK DEVELOPER letters - slide DOWN
+        const developerLetters = [
+          bottomW, bottomLetter1, bottomLetter2, bottomLetter3, bottomLetter4,
+          bottomLetter5, bottomLetter6, bottomLetter7, bottomLetter8, bottomLetter9,
+          bottomLetter10, bottomLetter11, bottomLetter12, bottomLetter13, bottomLetter14,
+          bottomLetter15, bottomLetter16, bottomLetter17, bottomLetter18, bottomLetter19
+        ];
+        
+        developerLetters.forEach(letter => {
+          if (letter) {
+            console.log('Sliding DOWN:', letter.id); // Debug log
+            letter.classList.add('text-slide-down');
+          }
+        });
+
+        // Check if ticker should be applied based on project and screen size
+        const shouldApplyTicker = 
+          (projectName === "Pomodoro Timer" && window.innerWidth < 450) ||
+          (projectName === "TEMPUS Katoomba" && window.innerWidth < 480) ||
+          (projectName === "welcome.audio" && window.innerWidth < 420);
+
+        // Start ticker crawl after slide-up completes (only for specific projects at small screens)
+        if (shouldApplyTicker) {
+          setTimeout(() => {
+            // Apply ticker animation to all project letters that have content
+            const projectLetters = [projectP, projectR, projectO, projectJ, projectE, projectC, projectT, projectSpace1, projectLparen, projectC2, projectL, projectI, projectC3, projectK, projectE2, projectD, projectRparen];
+          
+          // Calculate total width of the project title
+          let totalWidth = 0;
+          const lettersWithContent = [];
+          
+          projectLetters.forEach(letter => {
+            if (letter && letter.textContent) {
+              lettersWithContent.push(letter);
+              const currentLeft = letter.style.left;
+              if (currentLeft) {
+                totalWidth = Math.max(totalWidth, parseFloat(currentLeft) + 30); // 30px per letter width
+              }
+            }
+          });
+          
+           // Calculate steps for choppy animation (4 pixels per step)
+           const steps = Math.floor(totalWidth / 4);
+           
+           // Calculate duration to maintain constant speed (30 pixels per second)
+           const pixelsPerSecond = 30;
+           const duration = (totalWidth + 40) / pixelsPerSecond;
+           
+           // Apply animation to all letters with content
+           lettersWithContent.forEach(letter => {
+             const currentLeft = letter.style.left;
+             if (currentLeft) {
+               // Create a clone for seamless looping
+               const clone = letter.cloneNode(true);
+               clone.setAttribute('data-clone-of', letter.id);
+               clone.style.left = (parseFloat(currentLeft) + totalWidth + 40) + 'px';
+               clone.style.setProperty('--start-position', (parseFloat(currentLeft) + totalWidth + 40) + 'px');
+               clone.style.setProperty('--total-width', totalWidth + 'px');
+               clone.style.setProperty('--steps', steps);
+               clone.style.setProperty('--duration', duration + 's');
+               clone.classList.add('ticker-crawl');
+               letter.parentNode.appendChild(clone);
+               
+               // Start animation on original letter
+               letter.style.setProperty('--start-position', currentLeft);
+               letter.style.setProperty('--total-width', totalWidth + 'px');
+               letter.style.setProperty('--steps', steps);
+               letter.style.setProperty('--duration', duration + 's');
+               letter.classList.add('ticker-crawl');
+             }
+           });
+          }, 600);
+        }
+      }
+
+      // Prevent pinch zoom with ctrl+wheel
+      window.addEventListener('wheel', function(e) {
+        if (e.ctrlKey) {
+          e.preventDefault();
+        }
+      }, { passive: false });
+
+
+      // Modular animation function for any letter element
+      function animateLetter(element, finalLetter, delay = 0) {
+        // Start with blank space
+        element.textContent = '';
+        
+        // Generate 6 random non-letter characters
+        const nonLetters = '0123456789!@#$%^&*()_+-=[]{}|;:,.<>?/~`';
+        const randomChars = [];
+        
+        for (let i = 0; i < 6; i++) {
+          let randomChar;
+          do {
+            randomChar = nonLetters[Math.floor(Math.random() * nonLetters.length)];
+          } while (randomChars.includes(randomChar)); // Avoid duplicates
+          randomChars.push(randomChar);
+        }
+        
+        let currentIndex = 0;
+        
+        const animateChar = () => {
+          if (currentIndex < randomChars.length) {
+            element.textContent = randomChars[currentIndex];
+            currentIndex++;
+            setTimeout(animateChar, 125); // 125ms delay between characters
+          } else {
+            element.textContent = finalLetter; // Final letter
+          }
+        };
+        
+        // Start animation after specified delay
+        setTimeout(animateChar, 250 + delay);
+      }
+
+      // Start the animation for all OMAR J letters with micro cascading delays
+      animateLetter(centerLetter, 'O', 0);    // O - starts immediately
+      animateLetter(letterM, 'M', 50);        // M - 50ms delay
+      animateLetter(letterA, 'A', 100);       // A - 100ms delay
+      animateLetter(letterR, 'R', 150);       // R - 150ms delay
+      animateLetter(letterJ, 'J', 200);       // J - 200ms delay
+
+
+
+      // Start the animation for all FULL-STACK DEVELOPER letters with micro cascading delays
+      animateLetter(bottomW, 'F', 250);           // F - 250ms delay
+      animateLetter(bottomLetter1, 'U', 300);     // U - 300ms delay
+      animateLetter(bottomLetter2, 'L', 350);     // L - 350ms delay
+      animateLetter(bottomLetter3, 'L', 400);     // L - 400ms delay
+      animateLetter(bottomLetter4, '-', 450);     // - - 450ms delay
+      animateLetter(bottomLetter5, 'S', 500);    // S - 500ms delay
+      animateLetter(bottomLetter6, 'T', 550);    // T - 550ms delay
+      animateLetter(bottomLetter7, 'A', 600);    // A - 600ms delay
+      animateLetter(bottomLetter8, 'C', 650);    // C - 650ms delay
+      animateLetter(bottomLetter9, 'K', 700);    // K - 700ms delay
+      // bottomLetter10 is blank gap (no animation)
+      animateLetter(bottomLetter11, 'D', 750);   // D - 750ms delay
+      animateLetter(bottomLetter12, 'E', 800);   // E - 800ms delay
+      animateLetter(bottomLetter13, 'V', 850);   // V - 850ms delay
+      animateLetter(bottomLetter14, 'E', 900);   // E - 900ms delay
+      animateLetter(bottomLetter15, 'L', 950);   // L - 950ms delay
+      animateLetter(bottomLetter16, 'O', 1000);  // O - 1000ms delay
+      animateLetter(bottomLetter17, 'P', 1050);  // P - 1050ms delay
+      animateLetter(bottomLetter18, 'E', 1100);  // E - 1100ms delay
+      animateLetter(bottomLetter19, 'R', 1150);  // R - 1150ms delay
+    </script>
+  </body>
+</html>
+
