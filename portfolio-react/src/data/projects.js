@@ -11,12 +11,12 @@ export const projectVideos = {
   "Pomodoro Timer": {
     webm: "/videos/pomodorotimer-preview.webm",
     mp4: "/videos/pomodorotimer-preview.mp4",
-    poster: "/images/pomodoroscreenshot.png",
+    poster: "/images/pomodoroscreenshot.webp",
   },
   "welcome.audio": {
     webm: "/videos/welcomeaudio-preview.webm",
     mp4: "/videos/welcomeaudio-preview.mp4",
-    poster: "/images/welcomescreenshot.png",
+    poster: "/images/welcomescreenshot.webp",
     vid1: {
       mp4: "/videos/welcomeaudio-vid1.mp4",
       webm: "/videos/welcomeaudio-vid1.webm",

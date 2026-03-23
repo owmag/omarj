@@ -2,6 +2,10 @@
   box-sizing: border-box;
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+
 html, body {
   height: 100%;
   margin: 0;
@@ -183,7 +187,7 @@ main.collapsing .developer-clip-container .letter.project-letter {
   height: 120%;
   object-fit: contain;
   opacity: 0;
-  transition: opacity 0.3s ease, width 0.5s cubic-bezier(0.4, 0, 0.2, 1), height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.1s ease;
 }
 
 .project-cell .project-preview-video.show {
@@ -214,7 +218,7 @@ main.collapsing .developer-clip-container .letter.project-letter {
   pointer-events: none;
   z-index: 11;
   opacity: 0;
-  transition: opacity 0.3s ease, width 0.5s cubic-bezier(0.4, 0, 0.2, 1), height 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: opacity 0.1s ease;
 }
 
 .project-cell .project-preview-poster.show {
