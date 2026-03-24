@@ -304,6 +304,193 @@ function showHoverPreviewWhenReady(video) {
   else video.addEventListener("loadedmetadata", go, { once: true });
 }
 
+/** Cover the cell (overflow clips) using contain-style aspect math — no object-fit: cover flip. */
+function applyHoverPreviewCoverSizing(el, cell, mediaWidth, mediaHeight) {
+  if (!el || !cell || !mediaWidth || !mediaHeight) return;
+  const cw = cell.clientWidth;
+  const ch = cell.clientHeight;
+  if (!cw || !ch) return;
+
+  const containerRatio = cw / ch;
+  const mediaRatio = mediaWidth / mediaHeight;
+
+  el.style.position = "absolute";
+  el.style.inset = "auto";
+  el.style.left = "50%";
+  el.style.top = "50%";
+  el.style.transform = "translate(-50%, -50%)";
+  el.style.objectFit = "contain";
+
+  if (mediaRatio > containerRatio) {
+    el.style.width = "auto";
+    el.style.height = "100%";
+  } else {
+    el.style.width = "100%";
+    el.style.height = "auto";
+  }
+  el.style.minWidth = "0";
+  el.style.minHeight = "0";
+  el.style.maxWidth = "none";
+  el.style.maxHeight = "none";
+}
+
+function disconnectHoverPreviewCoverLayout(video) {
+  if (!video) return;
+  video._hoverCoverRo?.disconnect();
+  video._hoverCoverRo = null;
+}
+
+/** Lock px size before grid collapse so % sizing doesn't shrink the fade-out. */
+function freezeHoverPreviewExitLayout(el) {
+  if (!el?.isConnected) return;
+  const rect = el.getBoundingClientRect();
+  if (rect.width < 2 || rect.height < 2) return;
+
+  el.style.position = "absolute";
+  el.style.inset = "auto";
+  el.style.left = "50%";
+  el.style.top = "50%";
+  el.style.transform = "translate(-50%, -50%)";
+  el.style.objectFit = "contain";
+  el.style.width = `${rect.width}px`;
+  el.style.height = `${rect.height}px`;
+  el.style.minWidth = "0";
+  el.style.minHeight = "0";
+  el.style.maxWidth = "none";
+  el.style.maxHeight = "none";
+  el.style.transition = "opacity 0.4s ease";
+}
+
+/** Clear inline layout from hover cover math / FLIP handoff. */
+function clearHoverPreviewLayoutStyles(el) {
+  if (!el) return;
+  el.style.left = "";
+  el.style.top = "";
+  el.style.transform = "";
+  el.style.inset = "";
+  el.style.objectFit = "";
+  el.style.width = "";
+  el.style.height = "";
+  el.style.minWidth = "";
+  el.style.minHeight = "";
+  el.style.maxWidth = "";
+  el.style.maxHeight = "";
+  el.style.transition = "";
+}
+
+const FULL_EXPAND_MEDIA_MS = 680;
+const FULL_EXPAND_MEDIA_EASE = "cubic-bezier(0.4, 0, 0.2, 1)";
+
+/** FLIP: px snapshot → animate to CSS % (.fully-expanded). Returns false if skipped. */
+function runFlipPreviewToFullyExpanded(el) {
+  const rect = el.getBoundingClientRect();
+  if (rect.width < 4 || rect.height < 4) return false;
+
+  el.style.transition = "none";
+  el.style.left = "50%";
+  el.style.top = "50%";
+  el.style.transform = "translate(-50%, -50%)";
+  el.style.objectFit = "contain";
+  el.style.width = `${rect.width}px`;
+  el.style.height = `${rect.height}px`;
+  el.style.minWidth = "0";
+  el.style.minHeight = "0";
+  el.style.maxWidth = "none";
+  el.style.maxHeight = "none";
+  void el.offsetWidth;
+
+  el.classList.add("fully-expanded");
+  el.style.transition = `width ${FULL_EXPAND_MEDIA_MS}ms ${FULL_EXPAND_MEDIA_EASE}, height ${FULL_EXPAND_MEDIA_MS}ms ${FULL_EXPAND_MEDIA_EASE}`;
+
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      el.style.width = "";
+      el.style.height = "";
+    });
+  });
+
+  return true;
+}
+
+function transitionHoverPreviewToFullyExpanded(cell, video, poster) {
+  disconnectHoverPreviewCoverLayout(video);
+
+  if (video.classList.contains("fully-expanded")) {
+    if (!video.classList.contains("show")) video.classList.add("show");
+    clearHoverPreviewLayoutStyles(video);
+    return;
+  }
+
+  if (!video.classList.contains("show")) video.classList.add("show");
+
+  const canFlipVideo = video.offsetWidth > 2 && video.offsetHeight > 2;
+  if (canFlipVideo && runFlipPreviewToFullyExpanded(video)) {
+    /* ok */
+  } else {
+    clearHoverPreviewLayoutStyles(video);
+    video.classList.add("fully-expanded");
+  }
+
+  const p = poster ?? cell.querySelector("[data-hover-poster]");
+  if (p?.isConnected) {
+    if (p.classList.contains("fully-expanded")) {
+      clearHoverPreviewLayoutStyles(p);
+    } else if (p.offsetWidth > 2 && p.offsetHeight > 2) {
+      if (!runFlipPreviewToFullyExpanded(p)) {
+        clearHoverPreviewLayoutStyles(p);
+        p.classList.add("fully-expanded");
+      }
+    } else {
+      clearHoverPreviewLayoutStyles(p);
+      p.classList.add("fully-expanded");
+    }
+  }
+
+  window.setTimeout(() => {
+    video.style.transition = "";
+    if (p?.isConnected) p.style.transition = "";
+  }, FULL_EXPAND_MEDIA_MS + 80);
+}
+
+/** ResizeObserver + metadata: keeps hover preview covering while partial-expand animates. */
+function setupHoverPreviewCoverLayout(cell, video, poster) {
+  disconnectHoverPreviewCoverLayout(video);
+
+  const sync = () => {
+    if (!video.isConnected || !cell.isConnected) return;
+    if (video.classList.contains("fully-expanded")) return;
+
+    const vw = video.videoWidth;
+    const vh = video.videoHeight;
+    if (vw && vh) {
+      applyHoverPreviewCoverSizing(video, cell, vw, vh);
+    }
+    if (poster?.isConnected) {
+      const pw = poster.naturalWidth;
+      const ph = poster.naturalHeight;
+      if (pw && ph) {
+        applyHoverPreviewCoverSizing(poster, cell, pw, ph);
+      }
+    }
+  };
+
+  const ro = new ResizeObserver(() => {
+    requestAnimationFrame(sync);
+  });
+  ro.observe(cell);
+  video._hoverCoverRo = ro;
+
+  video.addEventListener("loadedmetadata", sync, { once: true });
+  if (poster) {
+    if (poster.complete && poster.naturalWidth) {
+      requestAnimationFrame(sync);
+    } else {
+      poster.addEventListener("load", sync, { once: true });
+    }
+  }
+  requestAnimationFrame(sync);
+}
+
 /** Call on every cell open so reuse path (mobile) still runs play() in the tap stack. */
 function tryPlayPreviewVideo(video) {
   if (!video) return;
@@ -366,6 +553,11 @@ function reparentPosterIntoVideoPanel(cell, video, videoPanel) {
   poster.style.height = "";
   poster.style.minWidth = "";
   poster.style.minHeight = "";
+  poster.style.left = "";
+  poster.style.top = "";
+  poster.style.transform = "";
+  poster.style.inset = "";
+  poster.style.objectFit = "";
   videoPanel.insertBefore(poster, video);
 }
 
@@ -513,8 +705,15 @@ export default function App() {
           }
         }
         const hoverVideo = cell.querySelector("[data-hover-video]");
-        if (hoverVideo && vidConfig.poster) {
-          attachHoverPoster(cell, hoverVideo, vidConfig.poster);
+        if (hoverVideo) {
+          if (vidConfig.poster) {
+            attachHoverPoster(cell, hoverVideo, vidConfig.poster);
+          }
+          setupHoverPreviewCoverLayout(
+            cell,
+            hoverVideo,
+            cell.querySelector("[data-hover-poster]"),
+          );
         }
       }
       if (pos) {
@@ -533,22 +732,28 @@ export default function App() {
 
   const handleMouseLeave = useCallback(
     (e) => {
+      const cell = e.currentTarget;
+      const hv = cell.querySelector("[data-hover-video]");
+      const hp = cell.querySelector("[data-hover-poster]");
+
       if (!expandedCellRef.current) {
+        if (hv) {
+          disconnectHoverPreviewCoverLayout(hv);
+          freezeHoverPreviewExitLayout(hv);
+        }
         collapsePartial(gridRef.current, cols, rows, cellSize);
-        e.currentTarget.style.zIndex = "";
+        cell.style.zIndex = "";
       }
       if (expandedCellRef.current) return;
-      const hv = e.currentTarget.querySelector("[data-hover-video]");
+
       if (hv) {
         hv.classList.add("fade-out");
         hv.pause();
-        hv.currentTime = 0;
         hv._removeTimeout = setTimeout(() => {
           hv._removeTimeout = null;
           hv.remove();
         }, 400);
       }
-      const hp = e.currentTarget.querySelector("[data-hover-poster]");
       if (hp) {
         hp.classList.add("fade-out");
         setTimeout(() => hp.remove(), 400);
@@ -596,12 +801,11 @@ export default function App() {
           cell.appendChild(video);
           video.load();
         }
-        video.classList.add("show", "fully-expanded");
-        video.style.width = "";
-        video.style.height = "";
-        video.style.minWidth = "";
-        video.style.minHeight = "";
-        video.style.transition = "";
+        transitionHoverPreviewToFullyExpanded(
+          cell,
+          video,
+          cell.querySelector("[data-hover-poster]"),
+        );
 
         tryPlayPreviewVideo(video);
 
@@ -688,12 +892,11 @@ export default function App() {
           cell.appendChild(video);
           video.load();
         }
-        video.classList.add("show", "fully-expanded");
-        video.style.width = "";
-        video.style.height = "";
-        video.style.minWidth = "";
-        video.style.minHeight = "";
-        video.style.transition = "";
+        transitionHoverPreviewToFullyExpanded(
+          cell,
+          video,
+          cell.querySelector("[data-hover-poster]"),
+        );
 
         tryPlayPreviewVideo(video);
 
@@ -818,12 +1021,11 @@ export default function App() {
           cell.appendChild(video);
           video.load();
         } else {
-          video.style.width = "";
-          video.style.height = "";
-          video.style.minWidth = "";
-          video.style.minHeight = "";
-          video.style.transition = "";
-          video.classList.add("fully-expanded");
+          transitionHoverPreviewToFullyExpanded(
+            cell,
+            video,
+            cell.querySelector("[data-hover-poster]"),
+          );
         }
         tryPlayPreviewVideo(video);
         attachTouchExpandPoster(cell, video, vidConfig.poster);
@@ -862,16 +1064,20 @@ export default function App() {
           gallery.remove();
         }
         const videoOnly = cell.querySelector("[data-hover-video]");
-        if (videoOnly) videoOnly.remove();
+        if (videoOnly) {
+          disconnectHoverPreviewCoverLayout(videoOnly);
+          videoOnly.remove();
+        }
         cell.querySelector("[data-hover-poster]")?.remove();
         cell.classList.remove("expanded");
         cell.style.zIndex = "";
       }
     }
 
-    gridRef.current
-      ?.querySelectorAll("[data-hover-video]")
-      .forEach((v) => v.remove());
+    gridRef.current?.querySelectorAll("[data-hover-video]").forEach((v) => {
+      disconnectHoverPreviewCoverLayout(v);
+      v.remove();
+    });
     gridRef.current
       ?.querySelectorAll("[data-hover-poster]")
       .forEach((p) => p.remove());
@@ -910,6 +1116,7 @@ export default function App() {
         gallery.classList.add("fade-out");
         setTimeout(() => gallery.remove(), 400);
       } else if (videoOnly) {
+        disconnectHoverPreviewCoverLayout(videoOnly);
         videoOnly.classList.add("fade-out");
         setTimeout(() => videoOnly.remove(), 400);
         const hp = cell.querySelector("[data-hover-poster]");
