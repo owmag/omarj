@@ -297,67 +297,11 @@ function collapseGrid(gridEl, cols, rows, cellSize) {
   gridEl.style.gridTemplateRows = Array(rows).fill(`${cellSize}px`).join(" ");
 }
 
-/**
- * Use partial-expand layout targets for cover math so sizing stays stable (no ResizeObserver zoom step).
- * Fall back to measured box only when targets are missing.
- */
-function effectivePreviewCellSize(cell, targetCellWidth, targetCellHeight) {
-  const tw = targetCellWidth ?? 0;
-  const th = targetCellHeight ?? 0;
-  if (tw > 0 && th > 0) {
-    return { cellWidth: tw, cellHeight: th };
-  }
-  const mw = Math.max(0, cell.clientWidth);
-  const mh = Math.max(0, cell.clientHeight);
-  return { cellWidth: mw || tw, cellHeight: mh || th };
-}
-
-function syncPreviewVideoSize(video, cell, targetCellWidth, targetCellHeight) {
-  if (!video || !cell) return;
-  const { cellWidth, cellHeight } = effectivePreviewCellSize(
-    cell,
-    targetCellWidth,
-    targetCellHeight,
-  );
-  const videoWidth = video.videoWidth;
-  const videoHeight = video.videoHeight;
-  if (!cellWidth || !cellHeight || !videoWidth || !videoHeight) return;
-
-  const cellAspect = cellWidth / cellHeight;
-  const videoAspect = videoWidth / videoHeight;
-  const coverScale = Math.max(
-    cellAspect / videoAspect,
-    videoAspect / cellAspect,
-    1,
-  );
-  const scaledPercent = coverScale * 100;
-  // Fixed px from layout targets — % of the cell changes as the grid animates and fights minWidth, which reads as a zoom.
-  const wPx = (scaledPercent / 100) * cellWidth;
-  const hPx = (scaledPercent / 100) * cellHeight;
-  video.style.transition = "opacity 0.1s ease";
-  video.style.width = `${wPx}px`;
-  video.style.height = `${hPx}px`;
-  video.style.minWidth = "";
-  video.style.minHeight = "";
-}
-
-/** Wait for intrinsic video size before showing — avoids visible 120% CSS → JS size step. */
-function syncAndShowHoverPreview(
-  video,
-  cell,
-  targetCellWidth,
-  targetCellHeight,
-) {
-  const apply = () => {
-    syncPreviewVideoSize(video, cell, targetCellWidth, targetCellHeight);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (video.isConnected) video.classList.add("show");
-      });
-    });
-  };
-  if (video.videoWidth && video.videoHeight) apply();
-  else video.addEventListener("loadedmetadata", apply, { once: true });
+/** Fade in only once dimensions exist (avoids empty first frame). */
+function showHoverPreviewWhenReady(video) {
+  const go = () => video.classList.add("show");
+  if (video.videoWidth && video.videoHeight) go();
+  else video.addEventListener("loadedmetadata", go, { once: true });
 }
 
 /** Call on every cell open so reuse path (mobile) still runs play() in the tap stack. */
@@ -366,68 +310,6 @@ function tryPlayPreviewVideo(video) {
   if (video.error) video.load();
   const p = video.play();
   if (p && typeof p.catch === "function") p.catch(() => {});
-}
-
-/** Same box math as syncPreviewVideoSize — only for hover preview; expanded uses CSS with the video. */
-function syncPreviewPosterToVideo(
-  poster,
-  video,
-  cell,
-  targetCellWidth,
-  targetCellHeight,
-) {
-  if (!poster || !video || !cell) return;
-  const iw = poster.naturalWidth || video.videoWidth;
-  const ih = poster.naturalHeight || video.videoHeight;
-  if (!iw || !ih) return;
-  const { cellWidth, cellHeight } = effectivePreviewCellSize(
-    cell,
-    targetCellWidth,
-    targetCellHeight,
-  );
-  if (!cellWidth || !cellHeight) return;
-  const cellAspect = cellWidth / cellHeight;
-  const contentAspect = iw / ih;
-  const coverScale = Math.max(
-    cellAspect / contentAspect,
-    contentAspect / cellAspect,
-    1,
-  );
-  const scaledPercent = coverScale * 100;
-  const wPx = (scaledPercent / 100) * cellWidth;
-  const hPx = (scaledPercent / 100) * cellHeight;
-  poster.style.transition = "opacity 0.1s ease";
-  poster.style.width = `${wPx}px`;
-  poster.style.height = `${hPx}px`;
-  poster.style.minWidth = "";
-  poster.style.minHeight = "";
-  poster.classList.remove("instant");
-  poster.classList.add("show");
-}
-
-function bindPosterSizeToVideo(
-  poster,
-  video,
-  cell,
-  targetCellWidth,
-  targetCellHeight,
-) {
-  const sync = () => {
-    if (!poster.isConnected || !video.isConnected) return;
-    const iw = poster.naturalWidth || video.videoWidth;
-    const ih = poster.naturalHeight || video.videoHeight;
-    if (!iw || !ih) return;
-    syncPreviewPosterToVideo(
-      poster,
-      video,
-      cell,
-      targetCellWidth,
-      targetCellHeight,
-    );
-  };
-  video.addEventListener("loadedmetadata", sync, { once: true });
-  poster.addEventListener("load", sync, { once: true });
-  sync();
 }
 
 function fadeOutRemovePoster(poster) {
@@ -448,23 +330,16 @@ function bindPosterUntilVideoReady(video, poster) {
   video.addEventListener("canplay", done, { once: true });
 }
 
-function attachHoverPoster(cell, video, posterSrc, previewLayout) {
+function attachHoverPoster(cell, video, posterSrc) {
   if (!posterSrc || window.matchMedia("(hover: none)").matches) return;
   cell.querySelector("[data-hover-poster]")?.remove();
   const poster = document.createElement("img");
   poster.dataset.hoverPoster = "";
-  poster.className = "project-preview-poster instant";
+  poster.className = "project-preview-poster show instant";
   poster.src = posterSrc;
   poster.alt = "";
   poster.decoding = "async";
   cell.appendChild(poster);
-  bindPosterSizeToVideo(
-    poster,
-    video,
-    cell,
-    previewLayout?.targetCellWidth,
-    previewLayout?.targetCellHeight,
-  );
   bindPosterUntilVideoReady(video, poster);
 }
 
@@ -582,21 +457,11 @@ export default function App() {
         : null;
       if (pos) {
         e.currentTarget.style.zIndex = "10";
-        partialExpand(
-          gridRef.current,
-          cols,
-          rows,
-          pos.row,
-          pos.col,
-          previewLayout,
-        );
       }
 
       const vidConfig = pos?.project?.name && projectVideos[pos.project.name];
       if (vidConfig) {
         const cell = e.currentTarget;
-        const tw = previewLayout?.targetCellWidth;
-        const th = previewLayout?.targetCellHeight;
         let video = cell.querySelector("[data-hover-video]");
         if (video) {
           if (video._removeTimeout) {
@@ -604,7 +469,7 @@ export default function App() {
             video._removeTimeout = null;
           }
           video.classList.remove("fade-out");
-          syncAndShowHoverPreview(video, cell, tw, th);
+          showHoverPreviewWhenReady(video);
           video.play().catch(() => {});
         }
         if (!video) {
@@ -635,7 +500,7 @@ export default function App() {
           webm.type = "video/webm";
           video.appendChild(webm);
           cell.appendChild(video);
-          syncAndShowHoverPreview(video, cell, tw, th);
+          showHoverPreviewWhenReady(video);
           if (video.readyState >= 2) {
             video.play().catch(() => {});
           } else {
@@ -649,8 +514,18 @@ export default function App() {
         }
         const hoverVideo = cell.querySelector("[data-hover-video]");
         if (hoverVideo && vidConfig.poster) {
-          attachHoverPoster(cell, hoverVideo, vidConfig.poster, previewLayout);
+          attachHoverPoster(cell, hoverVideo, vidConfig.poster);
         }
+      }
+      if (pos) {
+        partialExpand(
+          gridRef.current,
+          cols,
+          rows,
+          pos.row,
+          pos.col,
+          previewLayout,
+        );
       }
     },
     [cols, rows, projectPositions],
