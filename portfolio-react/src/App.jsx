@@ -380,11 +380,30 @@ function clearHoverPreviewLayoutStyles(el) {
 
 const FULL_EXPAND_MEDIA_MS = 680;
 const FULL_EXPAND_MEDIA_EASE = "cubic-bezier(0.4, 0, 0.2, 1)";
+/** Grid expand animation is 0.7s; gallery reparent must not run mid-FLIP. */
+const GALLERY_MOUNT_DELAY_MS = 750;
 
-/** FLIP: px snapshot → animate to CSS % (.fully-expanded). Returns false if skipped. */
+/** Matches .project-cell .fully-expanded (70% + max caps; grid tracks use inner+2). */
+function getFullyExpandedPreviewBoxPx() {
+  const cw = window.innerWidth + 2;
+  const ch = window.innerHeight + 2;
+  return {
+    width: Math.min(cw * 0.7, 900),
+    height: Math.min(ch * 0.7, 600),
+  };
+}
+
+/**
+ * FLIP in px only: clearing width/height to CSS % while the cell is still growing makes the
+ * tween endpoint move every frame; handing off to % after the tween (via clearHoverPreviewLayoutStyles)
+ * overshoots when the real cell box is slightly larger than inner+2 — late snap to a bigger size.
+ * Keep final px; timeout only clears the width/height transition property.
+ */
 function runFlipPreviewToFullyExpanded(el) {
   const rect = el.getBoundingClientRect();
   if (rect.width < 4 || rect.height < 4) return false;
+
+  const { width: tw, height: th } = getFullyExpandedPreviewBoxPx();
 
   el.style.transition = "none";
   el.style.left = "50%";
@@ -404,8 +423,8 @@ function runFlipPreviewToFullyExpanded(el) {
 
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      el.style.width = "";
-      el.style.height = "";
+      el.style.width = `${tw}px`;
+      el.style.height = `${th}px`;
     });
   });
 
@@ -859,7 +878,7 @@ export default function App() {
             gallery: galleryEl,
             onGalleryScroll,
           };
-        }, 400);
+        }, GALLERY_MOUNT_DELAY_MS);
       } else if (projectName === "welcome.audio" && vidConfig) {
         let video = cell.querySelector("[data-hover-video]");
         if (!video) {
@@ -988,7 +1007,7 @@ export default function App() {
             gallery: galleryEl,
             onGalleryScroll,
           };
-        }, 400);
+        }, GALLERY_MOUNT_DELAY_MS);
       } else if (vidConfig) {
         let video = cell.querySelector("[data-hover-video]");
         if (!video) {
