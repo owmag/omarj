@@ -373,9 +373,30 @@ function bindPosterSizeToVideo(poster, video, cell, targetCellWidth, targetCellH
   sync();
 }
 
+function clearPendingHoverFadeIn(el) {
+  if (!el?._showDelayTimeout) return;
+  clearTimeout(el._showDelayTimeout);
+  el._showDelayTimeout = null;
+}
+
+const HOVER_FADE_IN_DELAY_MS = 10;
+
+function scheduleHoverFadeIn(el, delayMs = HOVER_FADE_IN_DELAY_MS) {
+  if (!el) return;
+  clearPendingHoverFadeIn(el);
+  el._showDelayTimeout = setTimeout(() => {
+    el._showDelayTimeout = null;
+    if (!el.isConnected) return;
+    requestAnimationFrame(() => {
+      if (!el.isConnected) return;
+      el.classList.add("show");
+    });
+  }, delayMs);
+}
+
 /** Fade in only once dimensions exist (avoids empty first frame). */
 function showHoverPreviewWhenReady(video) {
-  const go = () => video.classList.add("show");
+  const go = () => scheduleHoverFadeIn(video);
   if (video.videoWidth && video.videoHeight) go();
   else video.addEventListener("loadedmetadata", go, { once: true });
 }
@@ -626,8 +647,98 @@ function tryPlayPreviewVideo(video) {
   if (p && typeof p.catch === "function") p.catch(() => {});
 }
 
+function createPreviewVideoElement(projectName, vidConfig) {
+  const video = document.createElement("video");
+  video.dataset.cacheKey = projectName;
+  video.setAttribute("data-hover-video", "");
+  video.className = "project-preview-video";
+  video.muted = true;
+  video.loop = true;
+  video.playsInline = true;
+  video.preload = "auto";
+  video.controls = false;
+  video.setAttribute("playsinline", "");
+  video.setAttribute("webkit-playsinline", "");
+  video.addEventListener("webkitbeginfullscreen", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+  });
+  video.addEventListener("webkitendfullscreen", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+  });
+  if (vidConfig?.mp4) {
+    const mp4 = document.createElement("source");
+    mp4.src = vidConfig.mp4;
+    mp4.type = "video/mp4";
+    video.appendChild(mp4);
+  }
+  if (vidConfig?.webm) {
+    const webm = document.createElement("source");
+    webm.src = vidConfig.webm;
+    webm.type = "video/webm";
+    video.appendChild(webm);
+  }
+  return video;
+}
+
+function getOrCreateCachedPreviewVideo(cacheMap, projectName, vidConfig) {
+  if (!projectName || !vidConfig) return null;
+  let video = cacheMap.get(projectName);
+  if (!video) {
+    video = createPreviewVideoElement(projectName, vidConfig);
+    cacheMap.set(projectName, video);
+  }
+  return video;
+}
+
+function mountCachedPreviewVideo(cacheMap, projectName, vidConfig, cell) {
+  if (!cell) return null;
+  const video = getOrCreateCachedPreviewVideo(cacheMap, projectName, vidConfig);
+  if (!video) return null;
+
+  if (video._removeTimeout) {
+    clearTimeout(video._removeTimeout);
+    video._removeTimeout = null;
+  }
+  disconnectHoverPreviewCoverLayout(video);
+  clearHoverPreviewLayoutStyles(video);
+  video.className = "project-preview-video";
+  video.classList.remove("show", "fade-out", "fully-expanded");
+  video.setAttribute("data-hover-video", "");
+
+  if (video.parentNode && video.parentNode !== cell) {
+    video.parentNode.removeChild(video);
+  }
+  if (video.parentNode !== cell) {
+    cell.appendChild(video);
+  }
+  return video;
+}
+
+function recycleCachedPreviewVideo(cacheMap, video) {
+  if (!video) return;
+  clearPendingHoverFadeIn(video);
+  if (video._removeTimeout) {
+    clearTimeout(video._removeTimeout);
+    video._removeTimeout = null;
+  }
+  disconnectHoverPreviewCoverLayout(video);
+  clearHoverPreviewLayoutStyles(video);
+  video.className = "project-preview-video";
+  video.classList.remove("show", "fade-out", "fully-expanded");
+  video.removeAttribute("data-hover-video");
+  video.pause();
+  if (video.parentNode) {
+    video.parentNode.removeChild(video);
+  }
+  const key = video.dataset.cacheKey;
+  if (key && !cacheMap.has(key)) cacheMap.set(key, video);
+}
+
 function fadeOutRemovePoster(poster) {
   if (!poster?.parentNode) return;
+  clearPendingHoverFadeIn(poster);
   poster.classList.add("fade-out");
   const end = () => poster.remove();
   poster.addEventListener("transitionend", end, { once: true });
@@ -655,9 +766,7 @@ function attachHoverPoster(cell, video, posterSrc, previewLayout) {
   if (isDesktopFineHover()) {
     poster.className = "project-preview-poster";
     cell.appendChild(poster);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => poster.classList.add("show"));
-    });
+    scheduleHoverFadeIn(poster);
   } else {
     poster.className = "project-preview-poster show instant";
     cell.appendChild(poster);
@@ -719,6 +828,7 @@ export default function App() {
   const projectDotsRef = useRef(null);
   const letterOverlayRef = useRef(null);
   const galleryScrollListenerRef = useRef(null);
+  const previewVideoCacheRef = useRef(new Map());
 
   const reserved = useMemo(() => getReservedCells(cols, rows), [cols, rows]);
   const totalCells = cols * rows;
@@ -756,6 +866,25 @@ export default function App() {
   }, [projectPositions, cols, rows, reserved]);
 
   useEffect(() => {
+    const cache = previewVideoCacheRef.current;
+    Object.entries(projectVideos).forEach(([projectName, vidConfig]) => {
+      if (!vidConfig?.mp4 && !vidConfig?.webm) return;
+      const video = getOrCreateCachedPreviewVideo(cache, projectName, vidConfig);
+      if (video && video.readyState === 0) {
+        video.load();
+      }
+    });
+    return () => {
+      cache.forEach((video) => {
+        disconnectHoverPreviewCoverLayout(video);
+        video.pause();
+        video.remove();
+      });
+      cache.clear();
+    };
+  }, []);
+
+  useEffect(() => {
     if (!gridRef.current) return;
     gridRef.current.style.gridTemplateColumns = Array(cols)
       .fill(`${cellSize}px`)
@@ -764,6 +893,30 @@ export default function App() {
       .fill(`${cellSize}px`)
       .join(" ");
   }, [cols, rows, cellSize]);
+
+  const getPreviewVideoForCell = useCallback((projectName, cell) => {
+    const vidConfig = projectVideos[projectName];
+    if (!vidConfig) return null;
+    return mountCachedPreviewVideo(
+      previewVideoCacheRef.current,
+      projectName,
+      vidConfig,
+      cell,
+    );
+  }, []);
+
+  const recyclePreviewVideo = useCallback((video) => {
+    recycleCachedPreviewVideo(previewVideoCacheRef.current, video);
+  }, []);
+
+  const recyclePreviewVideosIn = useCallback((root) => {
+    if (!root) return;
+    root
+      .querySelectorAll("video[data-cache-key]")
+      .forEach((video) =>
+        recycleCachedPreviewVideo(previewVideoCacheRef.current, video),
+      );
+  }, []);
 
   const handleMouseEnter = useCallback(
     (e, pos) => {
@@ -809,55 +962,16 @@ export default function App() {
 
         const runLegacyHoverPreview = () => {
           let video = cell.querySelector("[data-hover-video]");
+          if (!video) {
+            video = getPreviewVideoForCell(pos.project.name, cell);
+          }
           if (video) {
             if (video._removeTimeout) {
               clearTimeout(video._removeTimeout);
               video._removeTimeout = null;
             }
             video.classList.remove("fade-out");
-            video.classList.add("show");
-            if (video.readyState >= 1) {
-              syncPreviewVideoSize(video, cell, tw, th);
-            } else {
-              video.addEventListener(
-                "loadedmetadata",
-                () => syncPreviewVideoSize(video, cell, tw, th),
-                { once: true },
-              );
-            }
-            video.play().catch(() => {});
-          }
-          if (!video) {
-            video = document.createElement("video");
-            video.setAttribute("data-hover-video", "");
-            video.className = "project-preview-video";
-            video.muted = true;
-            video.loop = true;
-            video.playsInline = true;
-            video.preload = "auto";
-            video.controls = false;
-            video.setAttribute("playsinline", "");
-            video.setAttribute("webkit-playsinline", "");
-            video.addEventListener("webkitbeginfullscreen", (ev) => {
-              ev.preventDefault();
-              ev.stopPropagation();
-            });
-            video.addEventListener("webkitendfullscreen", (ev) => {
-              ev.preventDefault();
-              ev.stopPropagation();
-            });
-            const mp4 = document.createElement("source");
-            mp4.src = vidConfig.mp4;
-            mp4.type = "video/mp4";
-            video.appendChild(mp4);
-            const webm = document.createElement("source");
-            webm.src = vidConfig.webm;
-            webm.type = "video/webm";
-            video.appendChild(webm);
-            cell.appendChild(video);
-            requestAnimationFrame(() => {
-              requestAnimationFrame(() => video.classList.add("show"));
-            });
+            showHoverPreviewWhenReady(video);
             if (video.readyState >= 1) {
               syncPreviewVideoSize(video, cell, tw, th);
             } else {
@@ -897,6 +1011,9 @@ export default function App() {
             if (!cell.matches(":hover")) return;
 
             let video = cell.querySelector("[data-hover-video]");
+            if (!video) {
+              video = getPreviewVideoForCell(pos.project.name, cell);
+            }
             if (video) {
               if (video._removeTimeout) {
                 clearTimeout(video._removeTimeout);
@@ -905,46 +1022,6 @@ export default function App() {
               video.classList.remove("fade-out");
               showHoverPreviewWhenReady(video);
               video.play().catch(() => {});
-            }
-            if (!video) {
-              video = document.createElement("video");
-              video.setAttribute("data-hover-video", "");
-              video.className = "project-preview-video";
-              video.muted = true;
-              video.loop = true;
-              video.playsInline = true;
-              video.preload = "auto";
-              video.controls = false;
-              video.setAttribute("playsinline", "");
-              video.setAttribute("webkit-playsinline", "");
-              video.addEventListener("webkitbeginfullscreen", (ev) => {
-                ev.preventDefault();
-                ev.stopPropagation();
-              });
-              video.addEventListener("webkitendfullscreen", (ev) => {
-                ev.preventDefault();
-                ev.stopPropagation();
-              });
-              const mp4 = document.createElement("source");
-              mp4.src = vidConfig.mp4;
-              mp4.type = "video/mp4";
-              video.appendChild(mp4);
-              const webm = document.createElement("source");
-              webm.src = vidConfig.webm;
-              webm.type = "video/webm";
-              video.appendChild(webm);
-              cell.appendChild(video);
-              showHoverPreviewWhenReady(video);
-              if (video.readyState >= 2) {
-                video.play().catch(() => {});
-              } else {
-                video.addEventListener(
-                  "loadeddata",
-                  () => video.play().catch(() => {}),
-                  { once: true },
-                );
-                video.load();
-              }
             }
             const hoverVideo = cell.querySelector("[data-hover-video]");
             if (hoverVideo) {
@@ -991,19 +1068,21 @@ export default function App() {
       if (expandedCellRef.current) return;
 
       if (hv) {
+        clearPendingHoverFadeIn(hv);
         hv.classList.add("fade-out");
         hv.pause();
         hv._removeTimeout = setTimeout(() => {
           hv._removeTimeout = null;
-          hv.remove();
+          recyclePreviewVideo(hv);
         }, 400);
       }
       if (hp) {
+        clearPendingHoverFadeIn(hp);
         hp.classList.add("fade-out");
         setTimeout(() => hp.remove(), 400);
       }
     },
-    [cols, rows, cellSize],
+    [cols, rows, cellSize, recyclePreviewVideo],
   );
 
   const handleClick = useCallback(
@@ -1017,40 +1096,15 @@ export default function App() {
       if (projectName === "Pomodoro Timer" && vidConfig) {
         let video = cell.querySelector("[data-hover-video]");
         if (!video) {
-          video = document.createElement("video");
-          video.setAttribute("data-hover-video", "");
-          video.className = "project-preview-video";
-          video.muted = true;
-          video.loop = true;
-          video.playsInline = true;
-          video.preload = "auto";
-          video.controls = false;
-          video.setAttribute("playsinline", "");
-          video.setAttribute("webkit-playsinline", "");
-          video.addEventListener("webkitbeginfullscreen", (ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-          });
-          video.addEventListener("webkitendfullscreen", (ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-          });
-          const mp4 = document.createElement("source");
-          mp4.src = vidConfig.mp4;
-          mp4.type = "video/mp4";
-          video.appendChild(mp4);
-          const webm = document.createElement("source");
-          webm.src = vidConfig.webm;
-          webm.type = "video/webm";
-          video.appendChild(webm);
-          cell.appendChild(video);
-          video.load();
+          video = getPreviewVideoForCell(projectName, cell);
         }
-        transitionHoverPreviewToFullyExpanded(
-          cell,
-          video,
-          cell.querySelector("[data-hover-poster]"),
-        );
+        if (video) {
+          transitionHoverPreviewToFullyExpanded(
+            cell,
+            video,
+            cell.querySelector("[data-hover-poster]"),
+          );
+        }
 
         tryPlayPreviewVideo(video);
 
@@ -1110,40 +1164,15 @@ export default function App() {
       } else if (projectName === "welcome.audio" && vidConfig) {
         let video = cell.querySelector("[data-hover-video]");
         if (!video) {
-          video = document.createElement("video");
-          video.setAttribute("data-hover-video", "");
-          video.className = "project-preview-video";
-          video.muted = true;
-          video.loop = true;
-          video.playsInline = true;
-          video.preload = "auto";
-          video.controls = false;
-          video.setAttribute("playsinline", "");
-          video.setAttribute("webkit-playsinline", "");
-          video.addEventListener("webkitbeginfullscreen", (ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-          });
-          video.addEventListener("webkitendfullscreen", (ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-          });
-          const mp4 = document.createElement("source");
-          mp4.src = vidConfig.mp4;
-          mp4.type = "video/mp4";
-          video.appendChild(mp4);
-          const webm = document.createElement("source");
-          webm.src = vidConfig.webm;
-          webm.type = "video/webm";
-          video.appendChild(webm);
-          cell.appendChild(video);
-          video.load();
+          video = getPreviewVideoForCell(projectName, cell);
         }
-        transitionHoverPreviewToFullyExpanded(
-          cell,
-          video,
-          cell.querySelector("[data-hover-poster]"),
-        );
+        if (video) {
+          transitionHoverPreviewToFullyExpanded(
+            cell,
+            video,
+            cell.querySelector("[data-hover-poster]"),
+          );
+        }
 
         tryPlayPreviewVideo(video);
 
@@ -1241,35 +1270,9 @@ export default function App() {
       } else if (vidConfig) {
         let video = cell.querySelector("[data-hover-video]");
         if (!video) {
-          video = document.createElement("video");
-          video.setAttribute("data-hover-video", "");
-          video.className = "project-preview-video show fully-expanded";
-          video.muted = true;
-          video.loop = true;
-          video.playsInline = true;
-          video.preload = "auto";
-          video.controls = false;
-          video.setAttribute("playsinline", "");
-          video.setAttribute("webkit-playsinline", "");
-          video.addEventListener("webkitbeginfullscreen", (ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-          });
-          video.addEventListener("webkitendfullscreen", (ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-          });
-          const mp4 = document.createElement("source");
-          mp4.src = vidConfig.mp4;
-          mp4.type = "video/mp4";
-          video.appendChild(mp4);
-          const webm = document.createElement("source");
-          webm.src = vidConfig.webm;
-          webm.type = "video/webm";
-          video.appendChild(webm);
-          cell.appendChild(video);
-          video.load();
-        } else {
+          video = getPreviewVideoForCell(projectName, cell);
+        }
+        if (video) {
           transitionHoverPreviewToFullyExpanded(
             cell,
             video,
@@ -1280,7 +1283,7 @@ export default function App() {
         attachTouchExpandPoster(cell, video, vidConfig.poster);
       } else {
         const video = cell.querySelector("[data-hover-video]");
-        if (video) video.remove();
+        if (video) recyclePreviewVideo(video);
       }
 
       if (letterGridRef.current) letterGridRef.current.style.opacity = "0";
@@ -1294,7 +1297,7 @@ export default function App() {
       letterOverlayRef.current?.updateProject?.(projectName);
       expandedCellRef.current = { cell, pos };
     },
-    [cols, rows, cellSize],
+    [cols, rows, cellSize, getPreviewVideoForCell, recyclePreviewVideo],
   );
 
   const hardReset = useCallback(() => {
@@ -1315,7 +1318,7 @@ export default function App() {
         const videoOnly = cell.querySelector("[data-hover-video]");
         if (videoOnly) {
           disconnectHoverPreviewCoverLayout(videoOnly);
-          videoOnly.remove();
+          recyclePreviewVideo(videoOnly);
         }
         cell.querySelector("[data-hover-poster]")?.remove();
         cell.classList.remove("expanded");
@@ -1323,16 +1326,18 @@ export default function App() {
       }
     }
 
-    gridRef.current?.querySelectorAll("[data-hover-video]").forEach((v) => {
-      disconnectHoverPreviewCoverLayout(v);
-      v.remove();
-    });
+    gridRef.current
+      ?.querySelectorAll("[data-hover-video]")
+      .forEach((v) => recyclePreviewVideo(v));
     gridRef.current
       ?.querySelectorAll("[data-hover-poster]")
       .forEach((p) => p.remove());
     gridRef.current
       ?.querySelectorAll(".project-gallery-container")
-      .forEach((g) => g.remove());
+      .forEach((g) => {
+        recyclePreviewVideosIn(g);
+        g.remove();
+      });
 
     const currentCols = Math.ceil(window.innerWidth / cellSize);
     const currentRows = Math.ceil(window.innerHeight / cellSize);
@@ -1348,7 +1353,7 @@ export default function App() {
 
     justCollapsedRef.current = true;
     setTimeout(() => (justCollapsedRef.current = false), 50);
-  }, [cellSize]);
+  }, [cellSize, recyclePreviewVideo, recyclePreviewVideosIn]);
 
   const handleCollapse = useCallback(() => {
     const expanded = expandedCellRef.current;
@@ -1363,11 +1368,14 @@ export default function App() {
       const videoOnly = cell.querySelector("[data-hover-video]");
       if (gallery) {
         gallery.classList.add("fade-out");
-        setTimeout(() => gallery.remove(), 400);
+        setTimeout(() => {
+          recyclePreviewVideosIn(gallery);
+          gallery.remove();
+        }, 400);
       } else if (videoOnly) {
         disconnectHoverPreviewCoverLayout(videoOnly);
         videoOnly.classList.add("fade-out");
-        setTimeout(() => videoOnly.remove(), 400);
+        setTimeout(() => recyclePreviewVideo(videoOnly), 400);
         const hp = cell.querySelector("[data-hover-poster]");
         if (hp) {
           hp.classList.add("fade-out");
@@ -1400,7 +1408,7 @@ export default function App() {
       cell.style.zIndex = "";
       expandedCellRef.current = null;
     }, 700);
-  }, [cols, rows, cellSize]);
+  }, [cols, rows, cellSize, recyclePreviewVideo, recyclePreviewVideosIn]);
 
   useEffect(() => {
     hardReset();
