@@ -297,6 +297,82 @@ function collapseGrid(gridEl, cols, rows, cellSize) {
   gridEl.style.gridTemplateRows = Array(rows).fill(`${cellSize}px`).join(" ");
 }
 
+/** True mouse/trackpad desktop: new hover resize + FLIP. Coarse / touch uses legacy paths. */
+function isDesktopFineHover() {
+  return window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+}
+
+/** Legacy % + min-size preview box (pre–cover-layout). Used when !isDesktopFineHover(). */
+function syncPreviewVideoSize(video, cell, targetCellWidth, targetCellHeight) {
+  if (!video || !cell) return;
+  const cellWidth = targetCellWidth ?? cell.clientWidth;
+  const cellHeight = targetCellHeight ?? cell.clientHeight;
+  const videoWidth = video.videoWidth;
+  const videoHeight = video.videoHeight;
+  if (!cellWidth || !cellHeight || !videoWidth || !videoHeight) return;
+
+  const cellAspect = cellWidth / cellHeight;
+  const videoAspect = videoWidth / videoHeight;
+  const coverScale = Math.max(
+    cellAspect / videoAspect,
+    videoAspect / cellAspect,
+    1,
+  );
+  const scaledPercent = coverScale * 100;
+  video.style.transition = "opacity 0.3s ease";
+  video.style.width = `${scaledPercent}%`;
+  video.style.height = `${scaledPercent}%`;
+  video.style.minWidth = `${cellWidth}px`;
+  video.style.minHeight = `${cellHeight}px`;
+}
+
+function syncPreviewPosterToVideo(
+  poster,
+  video,
+  cell,
+  targetCellWidth,
+  targetCellHeight,
+) {
+  if (!poster || !video || !cell) return;
+  const videoWidth = video.videoWidth;
+  const videoHeight = video.videoHeight;
+  if (!videoWidth || !videoHeight) return;
+  const cellWidth = targetCellWidth ?? cell.clientWidth;
+  const cellHeight = targetCellHeight ?? cell.clientHeight;
+  if (!cellWidth || !cellHeight) return;
+  const cellAspect = cellWidth / cellHeight;
+  const videoAspect = videoWidth / videoHeight;
+  const coverScale = Math.max(
+    cellAspect / videoAspect,
+    videoAspect / cellAspect,
+    1,
+  );
+  const scaledPercent = coverScale * 100;
+  poster.style.transition = "opacity 0.3s ease";
+  poster.style.width = `${scaledPercent}%`;
+  poster.style.height = `${scaledPercent}%`;
+  poster.style.minWidth = `${cellWidth}px`;
+  poster.style.minHeight = `${cellHeight}px`;
+}
+
+function bindPosterSizeToVideo(poster, video, cell, targetCellWidth, targetCellHeight) {
+  const sync = () => {
+    if (!poster.isConnected || !video.isConnected) return;
+    if (video.videoWidth && video.videoHeight) {
+      syncPreviewPosterToVideo(
+        poster,
+        video,
+        cell,
+        targetCellWidth,
+        targetCellHeight,
+      );
+    }
+  };
+  video.addEventListener("loadedmetadata", sync, { once: true });
+  poster.addEventListener("load", sync, { once: true });
+  sync();
+}
+
 /** Fade in only once dimensions exist (avoids empty first frame). */
 function showHoverPreviewWhenReady(video) {
   const go = () => video.classList.add("show");
@@ -336,8 +412,18 @@ function applyHoverPreviewCoverSizing(el, cell, mediaWidth, mediaHeight) {
 
 function disconnectHoverPreviewCoverLayout(video) {
   if (!video) return;
+  if (video._hoverCoverRaf != null) {
+    cancelAnimationFrame(video._hoverCoverRaf);
+    video._hoverCoverRaf = null;
+  }
   video._hoverCoverRo?.disconnect();
   video._hoverCoverRo = null;
+}
+
+function cancelHoverEnterStagger(cell) {
+  if (!cell?._hoverEnterStaggerRaf) return;
+  cancelAnimationFrame(cell._hoverEnterStaggerRaf);
+  cell._hoverEnterStaggerRaf = null;
 }
 
 /** Lock px size before grid collapse so % sizing doesn't shrink the fade-out. */
@@ -380,8 +466,9 @@ function clearHoverPreviewLayoutStyles(el) {
 
 const FULL_EXPAND_MEDIA_MS = 680;
 const FULL_EXPAND_MEDIA_EASE = "cubic-bezier(0.4, 0, 0.2, 1)";
-/** Grid expand animation is 0.7s; gallery reparent must not run mid-FLIP. */
-const GALLERY_MOUNT_DELAY_MS = 750;
+/** Desktop: after FLIP (~680ms). Touch: legacy shorter delay. */
+const GALLERY_MOUNT_DELAY_DESKTOP_MS = 750;
+const GALLERY_MOUNT_DELAY_TOUCH_MS = 400;
 
 /** Matches .project-cell .fully-expanded (70% + max caps; grid tracks use inner+2). */
 function getFullyExpandedPreviewBoxPx() {
@@ -433,6 +520,17 @@ function runFlipPreviewToFullyExpanded(el) {
 
 function transitionHoverPreviewToFullyExpanded(cell, video, poster) {
   disconnectHoverPreviewCoverLayout(video);
+
+  if (!isDesktopFineHover()) {
+    clearHoverPreviewLayoutStyles(video);
+    video.classList.add("show", "fully-expanded");
+    video.style.width = "";
+    video.style.height = "";
+    video.style.minWidth = "";
+    video.style.minHeight = "";
+    video.style.transition = "";
+    return;
+  }
 
   if (video.classList.contains("fully-expanded")) {
     if (!video.classList.contains("show")) video.classList.add("show");
@@ -493,21 +591,31 @@ function setupHoverPreviewCoverLayout(cell, video, poster) {
     }
   };
 
+  const scheduleSync = () => {
+    if (video._hoverCoverRaf != null) {
+      cancelAnimationFrame(video._hoverCoverRaf);
+    }
+    video._hoverCoverRaf = requestAnimationFrame(() => {
+      video._hoverCoverRaf = null;
+      sync();
+    });
+  };
+
   const ro = new ResizeObserver(() => {
-    requestAnimationFrame(sync);
+    scheduleSync();
   });
   ro.observe(cell);
   video._hoverCoverRo = ro;
 
-  video.addEventListener("loadedmetadata", sync, { once: true });
+  video.addEventListener("loadedmetadata", scheduleSync, { once: true });
   if (poster) {
     if (poster.complete && poster.naturalWidth) {
-      requestAnimationFrame(sync);
+      scheduleSync();
     } else {
-      poster.addEventListener("load", sync, { once: true });
+      poster.addEventListener("load", scheduleSync, { once: true });
     }
   }
-  requestAnimationFrame(sync);
+  scheduleSync();
 }
 
 /** Call on every cell open so reuse path (mobile) still runs play() in the tap stack. */
@@ -536,16 +644,31 @@ function bindPosterUntilVideoReady(video, poster) {
   video.addEventListener("canplay", done, { once: true });
 }
 
-function attachHoverPoster(cell, video, posterSrc) {
+function attachHoverPoster(cell, video, posterSrc, previewLayout) {
   if (!posterSrc || window.matchMedia("(hover: none)").matches) return;
   cell.querySelector("[data-hover-poster]")?.remove();
   const poster = document.createElement("img");
   poster.dataset.hoverPoster = "";
-  poster.className = "project-preview-poster show instant";
   poster.src = posterSrc;
   poster.alt = "";
   poster.decoding = "async";
-  cell.appendChild(poster);
+  if (isDesktopFineHover()) {
+    poster.className = "project-preview-poster";
+    cell.appendChild(poster);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => poster.classList.add("show"));
+    });
+  } else {
+    poster.className = "project-preview-poster show instant";
+    cell.appendChild(poster);
+    bindPosterSizeToVideo(
+      poster,
+      video,
+      cell,
+      previewLayout?.targetCellWidth,
+      previewLayout?.targetCellHeight,
+    );
+  }
   bindPosterUntilVideoReady(video, poster);
 }
 
@@ -668,74 +791,6 @@ export default function App() {
         : null;
       if (pos) {
         e.currentTarget.style.zIndex = "10";
-      }
-
-      const vidConfig = pos?.project?.name && projectVideos[pos.project.name];
-      if (vidConfig) {
-        const cell = e.currentTarget;
-        let video = cell.querySelector("[data-hover-video]");
-        if (video) {
-          if (video._removeTimeout) {
-            clearTimeout(video._removeTimeout);
-            video._removeTimeout = null;
-          }
-          video.classList.remove("fade-out");
-          showHoverPreviewWhenReady(video);
-          video.play().catch(() => {});
-        }
-        if (!video) {
-          video = document.createElement("video");
-          video.setAttribute("data-hover-video", "");
-          video.className = "project-preview-video";
-          video.muted = true;
-          video.loop = true;
-          video.playsInline = true;
-          video.preload = "auto";
-          video.controls = false;
-          video.setAttribute("playsinline", "");
-          video.setAttribute("webkit-playsinline", "");
-          video.addEventListener("webkitbeginfullscreen", (ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-          });
-          video.addEventListener("webkitendfullscreen", (ev) => {
-            ev.preventDefault();
-            ev.stopPropagation();
-          });
-          const mp4 = document.createElement("source");
-          mp4.src = vidConfig.mp4;
-          mp4.type = "video/mp4";
-          video.appendChild(mp4);
-          const webm = document.createElement("source");
-          webm.src = vidConfig.webm;
-          webm.type = "video/webm";
-          video.appendChild(webm);
-          cell.appendChild(video);
-          showHoverPreviewWhenReady(video);
-          if (video.readyState >= 2) {
-            video.play().catch(() => {});
-          } else {
-            video.addEventListener(
-              "loadeddata",
-              () => video.play().catch(() => {}),
-              { once: true },
-            );
-            video.load();
-          }
-        }
-        const hoverVideo = cell.querySelector("[data-hover-video]");
-        if (hoverVideo) {
-          if (vidConfig.poster) {
-            attachHoverPoster(cell, hoverVideo, vidConfig.poster);
-          }
-          setupHoverPreviewCoverLayout(
-            cell,
-            hoverVideo,
-            cell.querySelector("[data-hover-poster]"),
-          );
-        }
-      }
-      if (pos) {
         partialExpand(
           gridRef.current,
           cols,
@@ -745,6 +800,173 @@ export default function App() {
           previewLayout,
         );
       }
+
+      const vidConfig = pos?.project?.name && projectVideos[pos.project.name];
+      if (vidConfig) {
+        const cell = e.currentTarget;
+        const tw = previewLayout?.targetCellWidth;
+        const th = previewLayout?.targetCellHeight;
+
+        const runLegacyHoverPreview = () => {
+          let video = cell.querySelector("[data-hover-video]");
+          if (video) {
+            if (video._removeTimeout) {
+              clearTimeout(video._removeTimeout);
+              video._removeTimeout = null;
+            }
+            video.classList.remove("fade-out");
+            video.classList.add("show");
+            if (video.readyState >= 1) {
+              syncPreviewVideoSize(video, cell, tw, th);
+            } else {
+              video.addEventListener(
+                "loadedmetadata",
+                () => syncPreviewVideoSize(video, cell, tw, th),
+                { once: true },
+              );
+            }
+            video.play().catch(() => {});
+          }
+          if (!video) {
+            video = document.createElement("video");
+            video.setAttribute("data-hover-video", "");
+            video.className = "project-preview-video";
+            video.muted = true;
+            video.loop = true;
+            video.playsInline = true;
+            video.preload = "auto";
+            video.controls = false;
+            video.setAttribute("playsinline", "");
+            video.setAttribute("webkit-playsinline", "");
+            video.addEventListener("webkitbeginfullscreen", (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+            });
+            video.addEventListener("webkitendfullscreen", (ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+            });
+            const mp4 = document.createElement("source");
+            mp4.src = vidConfig.mp4;
+            mp4.type = "video/mp4";
+            video.appendChild(mp4);
+            const webm = document.createElement("source");
+            webm.src = vidConfig.webm;
+            webm.type = "video/webm";
+            video.appendChild(webm);
+            cell.appendChild(video);
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => video.classList.add("show"));
+            });
+            if (video.readyState >= 1) {
+              syncPreviewVideoSize(video, cell, tw, th);
+            } else {
+              video.addEventListener(
+                "loadedmetadata",
+                () => syncPreviewVideoSize(video, cell, tw, th),
+                { once: true },
+              );
+            }
+            if (video.readyState >= 2) {
+              video.play().catch(() => {});
+            } else {
+              video.addEventListener(
+                "loadeddata",
+                () => video.play().catch(() => {}),
+                { once: true },
+              );
+              video.load();
+            }
+          }
+          const hoverVideo = cell.querySelector("[data-hover-video]");
+          if (hoverVideo && vidConfig.poster) {
+            attachHoverPoster(
+              cell,
+              hoverVideo,
+              vidConfig.poster,
+              previewLayout,
+            );
+          }
+        };
+
+        if (isDesktopFineHover()) {
+          cancelHoverEnterStagger(cell);
+          cell._hoverEnterStaggerRaf = requestAnimationFrame(() => {
+            cell._hoverEnterStaggerRaf = null;
+            if (expandedCellRef.current || !cell.isConnected) return;
+            if (!cell.matches(":hover")) return;
+
+            let video = cell.querySelector("[data-hover-video]");
+            if (video) {
+              if (video._removeTimeout) {
+                clearTimeout(video._removeTimeout);
+                video._removeTimeout = null;
+              }
+              video.classList.remove("fade-out");
+              showHoverPreviewWhenReady(video);
+              video.play().catch(() => {});
+            }
+            if (!video) {
+              video = document.createElement("video");
+              video.setAttribute("data-hover-video", "");
+              video.className = "project-preview-video";
+              video.muted = true;
+              video.loop = true;
+              video.playsInline = true;
+              video.preload = "auto";
+              video.controls = false;
+              video.setAttribute("playsinline", "");
+              video.setAttribute("webkit-playsinline", "");
+              video.addEventListener("webkitbeginfullscreen", (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+              });
+              video.addEventListener("webkitendfullscreen", (ev) => {
+                ev.preventDefault();
+                ev.stopPropagation();
+              });
+              const mp4 = document.createElement("source");
+              mp4.src = vidConfig.mp4;
+              mp4.type = "video/mp4";
+              video.appendChild(mp4);
+              const webm = document.createElement("source");
+              webm.src = vidConfig.webm;
+              webm.type = "video/webm";
+              video.appendChild(webm);
+              cell.appendChild(video);
+              showHoverPreviewWhenReady(video);
+              if (video.readyState >= 2) {
+                video.play().catch(() => {});
+              } else {
+                video.addEventListener(
+                  "loadeddata",
+                  () => video.play().catch(() => {}),
+                  { once: true },
+                );
+                video.load();
+              }
+            }
+            const hoverVideo = cell.querySelector("[data-hover-video]");
+            if (hoverVideo) {
+              if (vidConfig.poster) {
+                attachHoverPoster(
+                  cell,
+                  hoverVideo,
+                  vidConfig.poster,
+                  previewLayout,
+                );
+              }
+              setupHoverPreviewCoverLayout(
+                cell,
+                hoverVideo,
+                cell.querySelector("[data-hover-poster]"),
+              );
+            }
+          });
+        } else {
+          runLegacyHoverPreview();
+        }
+      }
     },
     [cols, rows, projectPositions],
   );
@@ -752,13 +974,16 @@ export default function App() {
   const handleMouseLeave = useCallback(
     (e) => {
       const cell = e.currentTarget;
+      cancelHoverEnterStagger(cell);
       const hv = cell.querySelector("[data-hover-video]");
       const hp = cell.querySelector("[data-hover-poster]");
 
       if (!expandedCellRef.current) {
         if (hv) {
           disconnectHoverPreviewCoverLayout(hv);
-          freezeHoverPreviewExitLayout(hv);
+          if (isDesktopFineHover()) {
+            freezeHoverPreviewExitLayout(hv);
+          }
         }
         collapsePartial(gridRef.current, cols, rows, cellSize);
         cell.style.zIndex = "";
@@ -785,6 +1010,7 @@ export default function App() {
     (e, pos) => {
       if (!pos || expandedCellRef.current) return;
       const cell = e.currentTarget;
+      cancelHoverEnterStagger(cell);
       const projectName = pos.project?.name;
       const vidConfig = projectName && projectVideos[projectName];
 
@@ -878,7 +1104,9 @@ export default function App() {
             gallery: galleryEl,
             onGalleryScroll,
           };
-        }, GALLERY_MOUNT_DELAY_MS);
+        }, isDesktopFineHover()
+          ? GALLERY_MOUNT_DELAY_DESKTOP_MS
+          : GALLERY_MOUNT_DELAY_TOUCH_MS);
       } else if (projectName === "welcome.audio" && vidConfig) {
         let video = cell.querySelector("[data-hover-video]");
         if (!video) {
@@ -1007,7 +1235,9 @@ export default function App() {
             gallery: galleryEl,
             onGalleryScroll,
           };
-        }, GALLERY_MOUNT_DELAY_MS);
+        }, isDesktopFineHover()
+          ? GALLERY_MOUNT_DELAY_DESKTOP_MS
+          : GALLERY_MOUNT_DELAY_TOUCH_MS);
       } else if (vidConfig) {
         let video = cell.querySelector("[data-hover-video]");
         if (!video) {
